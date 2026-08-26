@@ -1,0 +1,69 @@
+# ChatGPT subscription runtime
+
+Read this reference only for installation, authentication, backend diagnosis, or architecture questions.
+
+## The one supported route
+
+```text
+Agent Skill
+  -> native image_gen when available, otherwise installed Codex CLI
+  -> Sign in with ChatGPT
+  -> codex exec
+  -> built-in $imagegen / image_gen
+  -> workspace PNG
+  -> absolute Markdown preview
+```
+
+This skill has no Images API route. It removes `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`, and `CODEX_ACCESS_TOKEN` from the child environment before every Codex diagnostic, login, and generation command.
+
+## Why Codex CLI is the bridge
+
+- Codex's built-in image generation uses `gpt-image-2` and can count against general Codex usage limits when the user is signed in with ChatGPT.
+- `codex exec` provides a bounded non-interactive agent turn and supports initial reference images with `--image`.
+- The Codex SDK controls coding-focused Codex threads. It is useful when an application needs thread lifecycle APIs, but it does not remove the need for the Codex runtime.
+- Codex App Server is the JSON-RPC interface for rich clients needing conversation history, approvals, authentication state, and streamed events. It is unnecessary overhead for one generated workspace asset.
+
+Official references:
+
+- Codex image generation: https://learn.chatgpt.com/docs/image-generation
+- Codex CLI: https://learn.chatgpt.com/docs/codex/cli
+- Codex SDK: https://learn.chatgpt.com/docs/codex-sdk
+- Codex App Server: https://learn.chatgpt.com/docs/app-server
+
+## Installation
+
+The bridge runner requires Node.js 22 or newer; the latest supported Node.js LTS is recommended. When Node, Git, PATH, Windows/WSL selection, or Codex is missing, use [platform-setup.md](platform-setup.md).
+
+The runner's `install-codex --yes` command downloads the current official installer from exactly one platform URL:
+
+```text
+macOS/Linux/WSL2: https://chatgpt.com/codex/install.sh
+Windows:          https://chatgpt.com/codex/install.ps1
+```
+
+It saves the installer to an OS temporary directory, rejects an HTML or malformed response, runs it with `/bin/sh` or PowerShell, and removes the temporary file. It supports macOS, native Linux, native Windows, and WSL2. WSL1 is unsupported by current Codex.
+
+## Authentication
+
+Use only ChatGPT sign-in. The runner starts:
+
+```bash
+codex login --device-auth
+```
+
+The user completes the browser/device step. Never use `codex login --with-api-key`.
+
+The diagnostic checks redacted output from `codex login status` and `codex doctor --json`. A positive result requires explicit ChatGPT-auth evidence such as `Logged in using ChatGPT` or a doctor field whose reachability mode is `ChatGPT auth`. Unrelated Doctor failures, such as a malformed `config.toml`, do not negate a positive redacted ChatGPT-auth field because generation itself runs with `--ignore-user-config`.
+
+If an API-key login is detected, block generation. Do not automatically log out because that replaces authentication state. Ask the user whether they want to replace it with ChatGPT sign-in.
+
+## Host discovery
+
+- Codex discovers the skill at `~/.agents/skills/gpt-image` and invokes it as `$gpt-image`.
+- Claude Code discovers the skill at `~/.claude/skills/gpt-image` and invokes it as `/gpt-image`.
+- On native Windows, `~` means the Windows user profile and the installer creates directory junctions. On WSL2, `~` is the Linux home and the links must stay inside WSL2.
+- Restart or start a new session after first installation if the host does not refresh its skill list.
+
+## Usage implications
+
+Image generation is not free of limits: it consumes the user's included Codex/ChatGPT allowance, and image turns can count more heavily than ordinary turns. It does not create a separately billed Images API request because this skill never calls that API and strips API-key environment variables from the Codex child process.

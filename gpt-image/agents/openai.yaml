@@ -1,0 +1,8 @@
+interface:
+  display_name: "GPT Image Skill"
+  short_description: "Generate GPT images with ChatGPT subscription"
+  brand_color: "#0B57D0"
+  default_prompt: "Use $gpt-image to generate an image with my ChatGPT subscription, save it in this workspace, and show it inline."
+
+policy:
+  allow_implicit_invocation: true

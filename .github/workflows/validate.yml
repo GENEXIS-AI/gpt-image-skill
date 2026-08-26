@@ -1,0 +1,60 @@
+name: Validate skill
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cross-platform:
+    name: ${{ matrix.os }} / Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [22, 24]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+
+      - name: Check runner syntax and help
+        run: |
+          node --version
+          node --check gpt-image/scripts/gpt_image.mjs
+          node --check gpt-image/scripts/validate_skill.mjs
+          node gpt-image/scripts/validate_skill.mjs
+          node gpt-image/scripts/gpt_image.mjs help
+
+      - name: Check non-destructive host installation
+        run: |
+          node gpt-image/scripts/gpt_image.mjs install --target all --dry-run --json
+          node gpt-image/scripts/gpt_image.mjs install --target all --json
+          node gpt-image/scripts/gpt_image.mjs install --target all --dry-run --json
+
+  installer-contract:
+    name: Verify official Codex installers
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Verify installer redirects and signatures
+        run: node gpt-image/scripts/gpt_image.mjs verify-installers --json
