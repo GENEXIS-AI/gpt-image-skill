@@ -2,21 +2,30 @@
   "version": 1,
   "jobs": [
     {
-      "id": "wide-hero",
-      "prompt": "KEEP_BATCH_PROMPT_EXACTLY: a cobalt-blue glass robot",
-      "out": "generated-images/ci-batch-wide.png",
-      "size": "16:9"
+      "id": "shared-watercolor",
+      "mode": "variation",
+      "prompt": "KEEP_BATCH_PROMPT_EXACTLY: Keep the same design and render it in watercolor style.",
+      "edit_target": "generated-images/reference-edit-smoke.png",
+      "out": "generated-images/ci-shared-watercolor.png"
     },
     {
-      "id": "reference-variant",
-      "prompt": "Use the attached image as the visual reference.",
-      "out": "generated-images/ci-batch-reference.png",
+      "id": "shared-clay",
+      "mode": "variation",
+      "prompt": "Keep the same design and render it in clay style.",
+      "edit_target": "generated-images/reference-edit-smoke.png",
       "references": [
         "generated-images/subscription-workflow-smoke.png"
       ],
       "reference_roles": [
-        "visual reference"
-      ]
+        "style reference for this output"
+      ],
+      "out": "generated-images/ci-shared-clay.png"
+    },
+    {
+      "id": "independent-poster",
+      "mode": "generate",
+      "prompt": "Create a completely different geometric poster concept.",
+      "out": "generated-images/ci-independent-poster.png"
     }
   ]
 }

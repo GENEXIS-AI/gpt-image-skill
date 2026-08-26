@@ -1,11 +1,11 @@
 ---
 name: gpt-image
-description: Generate or edit raster images through the user's ChatGPT subscription and save or preview workspace PNGs. Use for text-to-image, local-reference generation, edits, follow-up revisions, variants, independent parallel batches, or subscription-backed setup in Codex, Claude Code, and compatible local agents. Preserve prompts verbatim and attach actual reference files. Prefer host-native image_gen; otherwise use Codex CLI with ChatGPT sign-in. Never use the Images API, OPENAI_API_KEY, or API-key login.
+description: Generate or edit raster images through the user's ChatGPT subscription and save or preview workspace PNGs. Use for text-to-image, local-reference generation, edits, follow-up revisions, variants, multi-image batches, or subscription-backed setup in Codex, Claude Code, and compatible local agents. Preserve prompts verbatim and attach actual reference files. Prefer host-native image_gen; otherwise use Codex CLI with ChatGPT sign-in. Never use the Images API, OPENAI_API_KEY, or API-key login.
 ---
 
 # GPT Image Skill
 
-Generate or edit one raster image—or a small set of independent images—save results under the current workspace, and show them in chat.
+Generate or edit one or more raster images, save results under the current workspace, and show them in chat.
 
 ## Keep the subscription boundary
 
@@ -27,6 +27,7 @@ Read [image-workflows.md](references/image-workflows.md) for references, Claude 
 - Treat the user's image prompt as authoritative and pass it through unchanged.
 - Do not rewrite, expand, optimize, translate, beautify, or add creative guidance.
 - Do not invent composition, lighting, style, color, objects, materials, text, negative prompts, or preservation rules.
+- For a multi-image request, each job may combine the exact shared words with that output's exact user-supplied phrase. Do not paraphrase either part or invent differences the user did not request.
 - Add a constraint only when the user explicitly supplied it through the prompt or a runner flag.
 - Ask one concise question only when missing information makes the requested operation impossible. Otherwise generate without prompt coaching.
 
@@ -90,15 +91,21 @@ node <skill-folder>/scripts/gpt_image.mjs generate \
 
 Use `--region`, `--preserve`, `--avoid`, `--exact-text`, `--size`, `--quality`, or `--background` only when the user explicitly supplied those details. The runner attaches the edit target first, then references in command-line order; strips API-related environment variables; verifies ChatGPT auth once; invokes built-in `$imagegen`; and saves a new PNG without overwriting by default.
 
-## Run independent images in parallel
+## Generate multiple images
 
-Use the CLI `batch` command only when the user requests two or more independent final images. Read the batch section of [image-workflows.md](references/image-workflows.md), write one workspace-local JSON manifest, then run `batch --manifest <path>`. The default concurrency is 2 and the maximum is 4. The batch checks ChatGPT auth once for the whole run and does not run Doctor, planning, inspection, or retries per job.
+When the user requests two or more outputs, use parallel calls for every job whose image inputs already exist. With the CLI bridge, read the multi-image section of [image-workflows.md](references/image-workflows.md), write one workspace-local manifest, and run `batch --manifest <path>`. Do not make the user ask for `batch` explicitly.
 
-Never put a revision chain in one batch. If image B edits image A, generate A first and then use its returned path in a normal sequential `generate --mode edit` call. Each parallel job consumes included Codex image-generation usage separately. If a limit rejects a job, report it without switching to an API route. Use `--check-only` only when the user requests a precheck or the manifest fails; describe it as **checking the batch without creating images**.
+Classify the request once without running a planning command:
+
+- **Same design, different styles:** reuse one shared design anchor. For the same composition with style changes, run parallel `variation` jobs with the same `edit_target`. For the same character or product in new scenes or layouts, run parallel `generate` jobs with the same first reference. Attach only that job's style reference after the shared anchor.
+- **Different design concepts:** create one job per concept with its own prompt and references, then run them together. If the user asks only for a number of alternatives and does not request consistency, treat them as independent alternatives.
+- **No anchor yet:** generate the first requested output normally, then use that returned image as the shared anchor for the remaining parallel jobs. Do not generate an extra hidden anchor that the user did not request.
+
+Never put an output-dependent revision in the same batch as its source. In a mixed request, batch all currently ready jobs, resolve the dependency, then batch the newly ready jobs. The default concurrency is 2 and the maximum is 4. A batch checks ChatGPT auth once and does not run Doctor, planning, inspection, or retries per job. If a limit rejects a job, report it without switching to an API route. Use `--check-only` only when the user requests a precheck or the manifest fails; describe it as **checking the batch without creating images**.
 
 ## Generate with a native host
 
-Call the native image tool once with the user's prompt unchanged. Pass the primary edit target and all references through the host's actual image-input mechanism; do not merely describe them in text. On a follow-up, include the last generated image as the edit target plus any still-needed references. Save or copy the selected result to `<workspace>/generated-images/` and render its absolute path.
+For one output, call the native image tool once with the user's prompt unchanged. For multiple outputs, issue one call per output concurrently when the host supports it and the calls have no unresolved dependency. Apply the same shared-anchor versus independent-concept routing above. Pass the primary edit target and all references through the host's actual image-input mechanism; do not merely describe them in text. On a follow-up, include the last generated image as the edit target plus any still-needed references. Save or copy every result to `<workspace>/generated-images/` and render each absolute path.
 
 ## Finish lightly
 

@@ -2,7 +2,7 @@
 
 [![Validate skill](https://github.com/GENEXIS-AI/gpt-image-skill/actions/workflows/validate.yml/badge.svg)](https://github.com/GENEXIS-AI/gpt-image-skill/actions/workflows/validate.yml)
 
-Generate and edit GPT images from Codex, Claude Code, or another compatible local agent through the user's **ChatGPT subscription**. The skill keeps every original image prompt unchanged, passes real reference files into generation, saves results in the active project, and shows them inline. Independent images can run through a bounded parallel CLI batch.
+Generate and edit GPT images from Codex, Claude Code, or another compatible local agent through the user's **ChatGPT subscription**. The skill keeps every original image prompt unchanged, passes real reference files into generation, saves results in the active project, and shows them inline. Multiple outputs—including shared-design variants and different concepts—use bounded parallel generation whenever their inputs are ready.
 
 ```text
 install skill → Sign in with ChatGPT → exact user prompt + local image inputs
@@ -97,7 +97,7 @@ Planning, the setup check that does not create an image (`--dry-run`), `capabili
 
 ### 5. Parallelism is explicit and bounded
 
-`generate` remains the one-image happy path. `batch` is a separate command for independent outputs: it resolves the manifest once, checks ChatGPT auth once, then runs separate ephemeral Codex image jobs with default concurrency 2 and maximum concurrency 4. It does not run Doctor, planning, inspection, or automatic retries per job. Revisions that depend on a previous result remain sequential.
+`generate` remains the one-image happy path. For two or more outputs, the skill automatically batches every job whose inputs already exist. Different design concepts run independently; same-design variants may run together while reading one shared edit target or design reference. Only an output-to-input dependency creates another stage. The batch checks ChatGPT auth once and uses default concurrency 2, maximum 4, with no Doctor, planning, inspection, or automatic retries per job.
 
 ## Features
 
@@ -108,7 +108,7 @@ Planning, the setup check that does not create an image (`--dry-run`), `capabili
 - Preserves the user's prompt verbatim
 - Supports one or multiple references with deterministic attachment order
 - Supports existing-image edits, follow-up revisions, variations, compositing, transparency, exact text, and dense-layout drafts
-- Supports bounded parallel generation for independent CLI jobs with one auth check per batch
+- Supports bounded parallel generation for independent concepts and shared-anchor variations
 - Saves only inside the active workspace and avoids overwrite by default
 - Returns `PATH=...` and absolute `MARKDOWN=...` after normal generation
 - Supports macOS, Linux, native Windows, and WSL2
@@ -124,7 +124,9 @@ Planning, the setup check that does not create an image (`--dry-run`), `capabili
 | Change the last generated image | Use the last returned path as the new `--edit-target` |
 | Variation | `--mode variation --edit-target PATH` |
 | Transparent output | Use `--background transparent` only when requested |
-| Independent images in parallel | `batch --manifest PATH`; default concurrency 2, maximum 4 |
+| Same design, different styles | Repeat `--mode variation --edit-target SAME_PATH` in a batch |
+| Same identity, different scenes | Repeat `--mode generate --reference SAME_PATH` in a batch |
+| Different designs in parallel | Give each batch job its own prompt and references |
 
 The edit target is Image 1. Supporting references follow in command-line order.
 
@@ -284,27 +286,36 @@ node ./gpt-image/scripts/gpt_image.mjs generate \
   --out "generated-images/combined.png"
 ```
 
-### Parallel independent images
+### Parallel multiple images
 
-Create a workspace-local manifest such as `image-jobs.json`:
+The skill chooses one of two structures without asking the user to know the CLI:
+
+- **Shared-anchor variations:** every job reads the same existing design. Use `variation` for the same composition in different styles, or use the design as the first reference when identity moves into different scenes or layouts.
+- **Independent concepts:** every job has its own prompt and relevant references. If the user asks only for several alternatives, the exact prompt can be reused without inventing styles.
+
+For shared-anchor style variations, create a workspace-local manifest such as `image-jobs.json`:
 
 ```json
 {
   "version": 1,
   "jobs": [
     {
-      "id": "wide-hero",
-      "prompt": "A cobalt-blue glass robot on a warm off-white background.",
-      "out": "generated-images/wide-hero.png",
-      "size": "16:9"
+      "id": "watercolor",
+      "mode": "variation",
+      "prompt": "Keep the same design and render it in watercolor style.",
+      "edit_target": "references/base-design.png",
+      "references": ["references/watercolor-style.png"],
+      "reference_roles": ["style reference for this output"],
+      "out": "generated-images/design-watercolor.png"
     },
     {
-      "id": "square-reference",
-      "prompt": "Draw this character riding a bicycle.",
-      "out": "generated-images/square-reference.png",
-      "references": ["references/robot.png"],
-      "reference_roles": ["character reference"],
-      "size": "1:1"
+      "id": "clay",
+      "mode": "variation",
+      "prompt": "Keep the same design and render it in clay style.",
+      "edit_target": "references/base-design.png",
+      "references": ["references/clay-style.png"],
+      "reference_roles": ["style reference for this output"],
+      "out": "generated-images/design-clay.png"
     }
   ]
 }
@@ -318,7 +329,11 @@ node ./gpt-image/scripts/gpt_image.mjs batch \
   --concurrency 2
 ```
 
-Each job uses the built-in subscription route separately and returns its own `PATH[id]` and `MARKDOWN[id]`. Jobs must be independent: if the second image edits the first, finish the first command and pass its returned path to a sequential `generate --mode edit` command. The runner does not retry failed jobs automatically and never switches to the Images API when a subscription limit is reached.
+Several jobs may read the same anchor safely. Attach only the style reference relevant to that output after the shared design anchor; do not attach every style reference to every job. For different design concepts, omit the shared `edit_target` and give each job its own exact prompt and references.
+
+If no common design image exists, generate the first requested output and use its returned path as the anchor for the remaining parallel variants. The skill does not generate an extra hidden anchor that consumes additional subscription usage. A batch output cannot feed another job in that same batch; mixed workflows run ready jobs in stages.
+
+Each job returns its own `PATH[id]` and `MARKDOWN[id]`. The runner does not retry failed jobs automatically and never switches to the Images API when a subscription limit is reached. See [Image and reference workflows](./gpt-image/references/image-workflows.md#multi-image-workflows) for independent-concept and mixed-dependency examples.
 
 ### Optional troubleshooting
 
@@ -362,7 +377,7 @@ node ./gpt-image/scripts/gpt_image.mjs verify-installers --json
 - [x] Stable-path and actual-attachment contract for Claude Code references
 - [x] Last-output-as-edit-target contract for follow-up revisions
 - [x] Direct generation by default; planning, no-image setup checks, and detailed receipts are optional
-- [x] Explicit bounded parallel batch for independent images; one auth check and zero diagnostic gates per job
+- [x] Shared-anchor variations and independent concepts use bounded parallel batches; one auth check and zero diagnostic gates per job
 - [x] One-time, user-language getting-started guide with ratio and quality examples
 - [x] Minimal output validation without generated-image hashes
 - [x] Node.js 22+, macOS, Linux, native Windows, and WSL2 setup guidance

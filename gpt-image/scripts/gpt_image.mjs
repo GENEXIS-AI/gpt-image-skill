@@ -144,7 +144,7 @@ Plan and generate options:
   --verbose               Generate only: show sanitized Codex bridge output.
 
 Batch options:
-  --manifest PATH         JSON file containing independent image jobs.
+  --manifest PATH         JSON file containing image jobs whose inputs are ready.
   --concurrency N         Parallel jobs. Default: ${DEFAULT_BATCH_CONCURRENCY}; maximum: ${MAX_BATCH_CONCURRENCY}.
   --check-only            Validate and summarize the batch without sign-in or generation.
   --cwd PATH              Workspace root. Defaults to the current directory.
@@ -156,7 +156,7 @@ Batch options:
 Reference attachment order is deterministic: edit target first, then references.
 The user prompt is forwarded unchanged; attachment labels are routing metadata only.
 Planning and the no-image setup check are optional troubleshooting tools, not generation prerequisites.
-Batch performs one ChatGPT-auth check, then runs only independent jobs in parallel. Chained edits stay sequential.
+Batch performs one ChatGPT-auth check, then runs every job whose inputs already exist. Jobs may share references; output-dependent edits stay sequential.
 
 Runtime:
   Node.js ${MIN_NODE_MAJOR}+ is required; the latest supported LTS is recommended.
@@ -1437,7 +1437,12 @@ function capabilityReport() {
     batch: {
       command: "batch --manifest PATH",
       parallel: true,
-      independent_jobs_only: true,
+      ready_input_jobs_only: true,
+      jobs_execute_as_separate_turns: true,
+      shared_read_only_inputs_allowed: true,
+      shared_anchor_variations: true,
+      independent_design_concepts: true,
+      output_dependencies_in_same_batch: false,
       default_concurrency: DEFAULT_BATCH_CONCURRENCY,
       maximum_concurrency: MAX_BATCH_CONCURRENCY,
       authentication_checks_per_batch: 1,
@@ -1841,7 +1846,10 @@ async function runBatch(args) {
     authentication_checks: checkOnly ? 0 : 1,
     diagnostics_run: Boolean(auth?.diagnosticUsed),
     diagnostics_per_job: 0,
-    independent_jobs_only: true,
+    ready_input_jobs_only: true,
+    jobs_execute_as_separate_turns: true,
+    shared_read_only_inputs_allowed: true,
+    output_dependencies_in_same_batch: false,
     usage_note: checkOnly
       ? "No sign-in check or image generation was performed."
       : "Each job is a separate built-in image generation and consumes included Codex usage.",

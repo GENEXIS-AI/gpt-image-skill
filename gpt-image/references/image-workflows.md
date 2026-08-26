@@ -97,36 +97,88 @@ Do not manufacture values for these flags. A phrase such as “change only the i
 
 For transparent output, `--background transparent` enables a minimal alpha check after generation. Exact text and dense layouts may still need user review, but they do not require an automatic quality gate.
 
-## Parallel batch generation
+## Multi-image workflows
 
-Use `batch` for independent images that can be generated in any order. The CLI parses the manifest and resolves its paths once, checks ChatGPT authentication once for the entire live run, then starts separate ephemeral `codex exec` image jobs with bounded concurrency. It does not run Doctor, planning, output inspection, or automatic retries for each job.
+When the user requests two or more outputs, parallelize every job whose inputs already exist. This includes several jobs that read the same reference or edit target. Only an output-to-input dependency requires another stage.
 
-Create a JSON file inside the active workspace:
+Choose the relationship from the request itself; do not run `plan` first:
+
+| Request | Structure |
+| --- | --- |
+| Same design or composition in several styles | Shared edit target → parallel `variation` jobs |
+| Same character, product, or identity in different scenes/layouts | Shared first reference → parallel `generate` jobs |
+| Different concepts, compositions, or design directions | Independent `generate` jobs in one batch |
+| A base image followed by variants | Generate the requested base → batch the variants |
+| Mixed dependencies | Batch all ready jobs → resolve outputs → batch the next ready jobs |
+
+If the user requests only “three alternatives” without asking for consistency, use independent jobs. Reuse the exact prompt for every job when no differences were supplied; natural generation variance provides alternatives without invented style directions.
+
+### Shared-anchor variations
+
+When a design image already exists, every variant can run in parallel from that one anchor:
+
+- Use `mode: "variation"` and the same `edit_target` when composition and design should remain recognizable while style changes.
+- Use `mode: "generate"` with the same anchor as `references[0]` when identity should carry into a different scene, pose, framing, or layout.
+- Put a job-specific style reference after the shared anchor. Do not attach every style reference to every job; that causes roles to bleed together.
+- Name image roles by order: the edit target is Image 1; otherwise the shared design reference is Image 1. A job-specific style reference follows as Image 2.
+
+Example with an existing design anchor:
 
 ```json
 {
   "version": 1,
   "jobs": [
     {
-      "id": "wide-hero",
-      "prompt": "A cobalt-blue glass robot on a warm off-white background.",
-      "out": "generated-images/wide-hero.png",
-      "size": "16:9",
-      "quality": "high quality"
+      "id": "watercolor",
+      "mode": "variation",
+      "prompt": "Keep the same design and render it in watercolor style.",
+      "edit_target": "references/base-design.png",
+      "references": ["references/watercolor-style.png"],
+      "reference_roles": ["style reference for this output"],
+      "out": "generated-images/design-watercolor.png"
     },
     {
-      "id": "square-reference",
-      "prompt": "Draw this character riding a bicycle.",
-      "out": "generated-images/square-reference.png",
-      "references": ["references/robot.png"],
-      "reference_roles": ["character reference"],
-      "size": "1:1"
+      "id": "clay",
+      "mode": "variation",
+      "prompt": "Keep the same design and render it in clay style.",
+      "edit_target": "references/base-design.png",
+      "references": ["references/clay-style.png"],
+      "reference_roles": ["style reference for this output"],
+      "out": "generated-images/design-clay.png"
     }
   ]
 }
 ```
 
-Run it from the workspace:
+When no anchor exists, generate the first requested output in the user's stated order. That returned image becomes the shared anchor for the remaining outputs, which can then run together. Do not spend an additional generation on a hidden neutral anchor unless the user explicitly requested or approved it.
+
+### Independent design concepts
+
+For different concepts, create one job per requested direction. Give each job only its relevant content or style references. A common style reference may be attached to every job only when the user explicitly wants shared art direction.
+
+```json
+{
+  "version": 1,
+  "jobs": [
+    {
+      "id": "circular-kiosk",
+      "prompt": "Create a circular glass kiosk with a central service counter.",
+      "out": "generated-images/circular-kiosk.png"
+    },
+    {
+      "id": "modular-kiosk",
+      "prompt": "Create a modular timber kiosk with movable display walls.",
+      "out": "generated-images/modular-kiosk.png"
+    }
+  ]
+}
+```
+
+For one user message that contains shared words plus named output directions, copy the exact shared words and the exact relevant output phrase into each job. Separating those verbatim fragments with a newline is allowed; paraphrasing, filling in missing styles, or adding a design direction is not.
+
+### Run a ready batch
+
+The CLI parses the manifest and resolves paths once, checks ChatGPT authentication once for the live batch, then starts separate ephemeral `codex exec` image jobs with bounded concurrency:
 
 ```bash
 node <skill-folder>/scripts/gpt_image.mjs batch \
@@ -134,17 +186,17 @@ node <skill-folder>/scripts/gpt_image.mjs batch \
   --concurrency 2
 ```
 
-Concurrency defaults to 2 and is capped at 4 to avoid an unbounded subscription burst. Every job is a separate built-in image generation and consumes included Codex usage. Successful jobs return their own `PATH[id]` and `MARKDOWN[id]`; one failed job does not erase other independent results, and the CLI does not retry it automatically or switch to an API route.
+Concurrency defaults to 2 and is capped at 4. Every job is a separate built-in image generation and consumes included Codex usage. Successful jobs return their own `PATH[id]` and `MARKDOWN[id]`; one failed job does not erase other results, and the CLI does not retry it automatically or switch to an API route.
 
-Each job requires `prompt` and `out`. It may also use `mode`, `edit_target`, `references`, `reference_roles`, `region`, `preserve`, `avoid`, `exact_text`, `quality`, `size`, `background`, `timeout_seconds`, `overwrite`, or `verbose`. Field names use JSON underscores. Prompts remain verbatim.
+Each job requires `prompt` and `out`. It may also use `mode`, `edit_target`, `references`, `reference_roles`, `region`, `preserve`, `avoid`, `exact_text`, `quality`, `size`, `background`, `timeout_seconds`, `overwrite`, or `verbose`. Field names use JSON underscores.
 
-Output paths must be unique. A batch output cannot be another batch job's input, even when that file already exists, because that would create a race. Run dependent edits sequentially:
+Output paths must be unique. A batch output cannot be another job's input because that would create a race. Shared read-only inputs are allowed; output dependencies run in stages:
 
 ```text
-generate A → receive A path → generate --mode edit --edit-target A
+generate requested anchor → receive path → parallel variations from that path
 ```
 
-To check only manifest structure, input files, output paths, and parallel scheduling without checking sign-in or generating images, use `--check-only`. In user-facing language, call this “checking the batch without creating images.” It is optional, not a required gate before a normal batch.
+To check only manifest structure, inputs, output paths, and scheduling without checking sign-in or generating images, use `--check-only`. In user-facing language, call this “checking the batch without creating images.” It is optional, not a required gate.
 
 ## Optional diagnostics
 

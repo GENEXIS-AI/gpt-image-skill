@@ -42,9 +42,16 @@ for (const target of requiredFiles) {
 const skillPath = path.join(SKILL_ROOT, "SKILL.md");
 const runnerPath = path.join(SKILL_ROOT, "scripts", "gpt_image.mjs");
 const readmePath = path.join(REPOSITORY_ROOT, "README.md");
+const batchManifestPath = path.join(REPOSITORY_ROOT, ".github", "fixtures", "batch-manifest.json");
 const skill = await readFile(skillPath, "utf8");
 const runner = await readFile(runnerPath, "utf8");
 const readme = await readFile(readmePath, "utf8");
+let batchManifest = { jobs: [] };
+try {
+  batchManifest = JSON.parse(await readFile(batchManifestPath, "utf8"));
+} catch (error) {
+  failures.push(`Batch manifest fixture must be valid JSON: ${error.message}`);
+}
 
 const frontmatter = skill.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
 requireCondition(Boolean(frontmatter), "SKILL.md must start with YAML frontmatter.");
@@ -96,6 +103,10 @@ for (const token of [
   "mapWithConcurrency",
   "authentication_checks",
   "diagnostics_run",
+  "shared_read_only_inputs_allowed",
+  "shared_anchor_variations",
+  "independent_design_concepts",
+  "output_dependencies_in_same_batch",
 ]) {
   requireCondition(runner.includes(token), `Runner is missing required guard or platform token: ${token}`);
 }
@@ -109,14 +120,35 @@ requireCondition(
 );
 requireCondition(!runner.includes("generation_dry_run"), "Bootstrap must not require a no-image generation check.");
 
-for (const token of ["Windows", "WSL2", "Node.js 22", "best_practice_pass", "verify-installers", "bootstrap --target all --yes", "$gpt-image", "/gpt-image", "Multiple references", "--edit-target", "--reference-role", "capabilities --json", "inspect --input", "prompt is authoritative", "Revisions always edit the latest result", "Why generated images no longer have SHA receipts", "What the agent shows after installation", "Common aspect-ratio requests", "translated into the user's language", "setup check that does not create an image", "Parallel independent images", "batch --manifest", "--check-only", "one auth check", "zero diagnostic gates per job"]) {
+for (const token of ["Windows", "WSL2", "Node.js 22", "best_practice_pass", "verify-installers", "bootstrap --target all --yes", "$gpt-image", "/gpt-image", "Multiple references", "--edit-target", "--reference-role", "capabilities --json", "inspect --input", "prompt is authoritative", "Revisions always edit the latest result", "Why generated images no longer have SHA receipts", "What the agent shows after installation", "Common aspect-ratio requests", "translated into the user's language", "setup check that does not create an image", "Parallel multiple images", "Shared-anchor variations", "batch --manifest", "--check-only", "one auth check", "zero diagnostic gates per job"]) {
   requireCondition(readme.includes(token), `README is missing cross-platform guidance: ${token}`);
 }
 
-for (const token of ["pass it through unchanged", "generated-images/inputs/", "previously returned output", "every bridge call as ephemeral", "Do not require SHA-256", "present `getting_started` once", "Do not repeat this guide", "setup check that does not create an image", "Do not run `doctor`, `plan`, `inspect`, `capabilities`", "checks ChatGPT auth once for the whole run", "Never put a revision chain in one batch"]) {
+for (const token of ["pass it through unchanged", "generated-images/inputs/", "previously returned output", "every bridge call as ephemeral", "Do not require SHA-256", "present `getting_started` once", "Do not repeat this guide", "setup check that does not create an image", "Do not run `doctor`, `plan`, `inspect`, `capabilities`", "A batch checks ChatGPT auth once", "Same design, different styles", "Do not generate an extra hidden anchor", "Never put an output-dependent revision in the same batch as its source"]) {
   requireCondition(skill.includes(token), `SKILL.md is missing a lightweight fidelity/reference rule: ${token}`);
 }
 requireCondition(!skill.includes("For vague requests"), "SKILL.md must not encourage inferred prompt expansion.");
+
+const batchJobs = Array.isArray(batchManifest.jobs) ? batchManifest.jobs : [];
+const sharedVariations = batchJobs.filter((job) => job.mode === "variation" && job.edit_target);
+const independentConcepts = batchJobs.filter(
+  (job) => job.mode === "generate" && !job.edit_target && !job.references?.length,
+);
+requireCondition(batchJobs.length >= 3, "Batch fixture must exercise multiple ready outputs.");
+requireCondition(sharedVariations.length >= 2, "Batch fixture must exercise parallel shared-anchor variations.");
+requireCondition(
+  new Set(sharedVariations.map((job) => job.edit_target)).size === 1,
+  "Shared-anchor variation jobs must reuse one read-only edit target.",
+);
+requireCondition(
+  sharedVariations.some((job) => job.references?.length && job.reference_roles?.some((role) => /style/i.test(role))),
+  "Shared-anchor fixture must exercise a job-specific style reference after the edit target.",
+);
+requireCondition(independentConcepts.length >= 1, "Batch fixture must also exercise an independent design concept.");
+requireCondition(
+  new Set(batchJobs.map((job) => job.out)).size === batchJobs.length,
+  "Every batch fixture job must use a unique output path.",
+);
 
 const batchBody = runner.match(/async function runBatch\(args\) \{[\s\S]*?\n\}(?=\n\nasync function runPlan)/)?.[0] || "";
 requireCondition(Boolean(batchBody), "Runner must contain the bounded batch implementation.");
@@ -138,6 +170,7 @@ const result = {
     description_present: Boolean(description),
     reference_workflows_present: await exists(path.join(SKILL_ROOT, "references", "image-workflows.md")),
     batch_manifest_fixture_present: await exists(path.join(REPOSITORY_ROOT, ".github", "fixtures", "batch-manifest.json")),
+    multi_image_fixture_present: sharedVariations.length >= 2 && independentConcepts.length >= 1,
     required_files: requiredFiles.length,
     skill_lines: skill.split(/\r?\n/).length,
   },
