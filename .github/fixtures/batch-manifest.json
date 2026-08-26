@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "jobs": [
+    {
+      "id": "wide-hero",
+      "prompt": "KEEP_BATCH_PROMPT_EXACTLY: a cobalt-blue glass robot",
+      "out": "generated-images/ci-batch-wide.png",
+      "size": "16:9"
+    },
+    {
+      "id": "reference-variant",
+      "prompt": "Use the attached image as the visual reference.",
+      "out": "generated-images/ci-batch-reference.png",
+      "references": [
+        "generated-images/subscription-workflow-smoke.png"
+      ],
+      "reference_roles": [
+        "visual reference"
+      ]
+    }
+  ]
+}

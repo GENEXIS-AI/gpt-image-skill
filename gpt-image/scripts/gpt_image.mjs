@@ -35,7 +35,9 @@ const CODEX_INSTALLER_URLS = {
 const ALLOWED_INSTALLER_HOSTS = new Set(["chatgpt.com", "releases.openai.com"]);
 const DEFAULT_TIMEOUT_MS = 12 * 60 * 1000;
 const MAX_CAPTURE_BYTES = 24 * 1024 * 1024;
-const CONTRACT_VERSION = 4;
+const CONTRACT_VERSION = 5;
+const DEFAULT_BATCH_CONCURRENCY = 2;
+const MAX_BATCH_CONCURRENCY = 4;
 const IMAGE_MODES = new Set(["auto", "generate", "edit", "variation"]);
 const REPEATABLE_FLAGS = new Set([
   "reference",
@@ -63,6 +65,7 @@ function parseArgs(argv) {
     "exact-text": [],
   };
   const booleanFlags = new Set([
+    "check-only",
     "dry-run",
     "json",
     "overwrite",
@@ -118,6 +121,7 @@ Usage:
   node scripts/gpt_image.mjs inspect --input PATH [--require-transparency] [--json]
   node scripts/gpt_image.mjs plan --prompt TEXT [options]
   node scripts/gpt_image.mjs generate --prompt TEXT [options]
+  node scripts/gpt_image.mjs batch --manifest PATH [--concurrency N] [--check-only] [--json]
 
 Plan and generate options:
   --mode MODE             auto, generate, edit, or variation. Default: auto.
@@ -139,9 +143,20 @@ Plan and generate options:
   --json                  Print machine-readable output.
   --verbose               Generate only: show sanitized Codex bridge output.
 
+Batch options:
+  --manifest PATH         JSON file containing independent image jobs.
+  --concurrency N         Parallel jobs. Default: ${DEFAULT_BATCH_CONCURRENCY}; maximum: ${MAX_BATCH_CONCURRENCY}.
+  --check-only            Validate and summarize the batch without sign-in or generation.
+  --cwd PATH              Workspace root. Defaults to the current directory.
+  --timeout-seconds N     Default timeout for each job.
+  --overwrite             Allow every job to replace its exact output path.
+  --verbose               Show sanitized Codex bridge output from each job.
+  --json                  Print machine-readable output.
+
 Reference attachment order is deterministic: edit target first, then references.
 The user prompt is forwarded unchanged; attachment labels are routing metadata only.
 Planning and the no-image setup check are optional troubleshooting tools, not generation prerequisites.
+Batch performs one ChatGPT-auth check, then runs only independent jobs in parallel. Chained edits stay sequential.
 
 Runtime:
   Node.js ${MIN_NODE_MAJOR}+ is required; the latest supported LTS is recommended.
@@ -333,6 +348,7 @@ function inspectSubscriptionAuth(deep = false) {
       authState: "codex-missing",
       evidence: "Codex CLI is not installed",
       configStatus: null,
+      diagnosticUsed: false,
     };
   }
 
@@ -355,6 +371,7 @@ function inspectSubscriptionAuth(deep = false) {
     authState: auth.state,
     evidence: auth.evidence,
     configStatus: doctor?.checks?.["config.load"]?.status ?? null,
+    diagnosticUsed: Boolean(doctor),
   };
 }
 
@@ -923,6 +940,23 @@ async function generateWithSubscription(options, auth) {
   }
 }
 
+async function executeGeneration(options, auth) {
+  await generateWithSubscription(options, auth);
+  const validation = await validateImage(options.output, {
+    requireTransparency: /transparent|alpha/i.test(options.background),
+  });
+  return {
+    ...imageRouteReceipt(options),
+    auth_evidence: auth.evidence,
+    bytes: validation.bytes,
+    format: validation.format,
+    width: validation.width,
+    height: validation.height,
+    has_transparency: validation.has_transparency,
+    markdown: markdownFor(options.output),
+  };
+}
+
 async function safeTargetState(target) {
   const info = await lstat(target).catch(() => null);
   if (!info) return { state: "missing" };
@@ -1166,16 +1200,19 @@ async function loginWithChatGPT() {
       3,
     );
   }
-  return { ok: true, chatgpt_subscription_login: true, auth_evidence: auth.evidence };
+  return {
+    auth,
+    receipt: { ok: true, chatgpt_subscription_login: true, auth_evidence: auth.evidence },
+  };
 }
 
 async function runLogin(args) {
-  const result = await loginWithChatGPT();
-  printResult(result, Boolean(args.json));
+  const { receipt } = await loginWithChatGPT();
+  printResult(receipt, Boolean(args.json));
 }
 
-async function buildDoctorReport() {
-  const auth = inspectSubscriptionAuth(true);
+async function buildDoctorReport(knownAuth = null) {
+  const auth = knownAuth || inspectSubscriptionAuth(true);
   const node = nodeRuntime();
   const platform = platformRuntime();
   const codexSkill = await safeTargetState(path.join(os.homedir(), ".agents", "skills", SKILL_NAME));
@@ -1298,11 +1335,15 @@ async function runBootstrap(args) {
         3,
       );
     }
-    login = await loginWithChatGPT();
+    const loginResult = await loginWithChatGPT();
+    login = loginResult.receipt;
+    auth = loginResult.auth;
     actions.push("chatgpt-device-login-completed");
   }
 
-  const doctor = await buildDoctorReport();
+  // Bootstrap reuses the auth result it already obtained. Explicit `doctor`
+  // remains the only setup path that deliberately runs a full diagnostic.
+  const doctor = await buildDoctorReport(auth);
   const ok = Boolean(doctor.ready && doctor.best_practice_pass);
   if (ok) actions.push("subscription-route-ready");
   const guide = ok ? gettingStartedGuide() : null;
@@ -1393,6 +1434,19 @@ function capabilityReport() {
       inline_markdown: true,
       multiple_assets_or_variants: "one native call or bridge invocation per final asset",
     },
+    batch: {
+      command: "batch --manifest PATH",
+      parallel: true,
+      independent_jobs_only: true,
+      default_concurrency: DEFAULT_BATCH_CONCURRENCY,
+      maximum_concurrency: MAX_BATCH_CONCURRENCY,
+      authentication_checks_per_batch: 1,
+      auth_diagnostic: "batch-level only when login status is ambiguous",
+      diagnostics_per_job: 0,
+      automatic_retries: false,
+      check_without_generation: "--check-only",
+      usage: "Each job consumes included Codex image-generation usage separately.",
+    },
     host_only_features: {
       canvas_area_selection: "Use the ChatGPT Canvas UI when available; the CLI bridge uses --region text.",
       conversation_multi_select: "Use the host UI when available; the CLI bridge accepts ordered local files.",
@@ -1478,6 +1532,325 @@ function imageRouteReceipt(options) {
   };
 }
 
+function assertKnownBatchOptions(args) {
+  const allowed = new Set([
+    "_",
+    "reference",
+    "reference-role",
+    "preserve",
+    "avoid",
+    "exact-text",
+    "manifest",
+    "cwd",
+    "concurrency",
+    "timeout-seconds",
+    "overwrite",
+    "check-only",
+    "json",
+    "verbose",
+  ]);
+  const unknown = Object.keys(args).filter((key) => !allowed.has(key));
+  if (unknown.length) {
+    const hint = unknown.includes("dry-run")
+      ? " Use --check-only to check a batch without creating images."
+      : "";
+    throw new CliError(
+      `Unknown batch option(s): ${unknown.map((key) => `--${key}`).join(", ")}.${hint}`,
+      2,
+    );
+  }
+  const misplaced = ["reference", "reference-role", "preserve", "avoid", "exact-text"]
+    .filter((key) => repeatedValues(args, key).length > 0);
+  if (misplaced.length) {
+    throw new CliError(
+      `Put per-image values inside the manifest job, not on the batch command: ${misplaced.map((key) => `--${key}`).join(", ")}`,
+      2,
+    );
+  }
+  if (args._.length > 1) {
+    throw new CliError(`Unexpected positional argument(s): ${args._.slice(1).join(" ")}`, 2);
+  }
+}
+
+function batchStringArray(value, label) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new CliError(`${label} must be a JSON array of strings.`, 2);
+  }
+  return value.map((item, index) => {
+    if (typeof item !== "string" || !item.trim()) {
+      throw new CliError(`${label}[${index}] must be a non-empty string.`, 2);
+    }
+    return item;
+  });
+}
+
+function batchJobArgs(job, index, batchArgs) {
+  if (!job || typeof job !== "object" || Array.isArray(job)) {
+    throw new CliError(`jobs[${index}] must be a JSON object.`, 2);
+  }
+  const allowed = new Set([
+    "id",
+    "prompt",
+    "out",
+    "mode",
+    "edit_target",
+    "references",
+    "reference_roles",
+    "region",
+    "preserve",
+    "avoid",
+    "exact_text",
+    "quality",
+    "size",
+    "background",
+    "timeout_seconds",
+    "overwrite",
+    "verbose",
+  ]);
+  const unknown = Object.keys(job).filter((key) => !allowed.has(key));
+  if (unknown.length) {
+    throw new CliError(
+      `jobs[${index}] has unknown field(s): ${unknown.join(", ")}.`,
+      2,
+    );
+  }
+
+  const id = job.id === undefined ? `job-${index + 1}` : String(job.id);
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id)) {
+    throw new CliError(
+      `jobs[${index}].id must use 1-64 letters, numbers, dots, underscores, or hyphens.`,
+      2,
+    );
+  }
+  if (typeof job.prompt !== "string" || !job.prompt.trim()) {
+    throw new CliError(`jobs[${index}].prompt must be a non-empty string.`, 2);
+  }
+  if (typeof job.out !== "string" || !job.out.trim()) {
+    throw new CliError(`jobs[${index}].out is required for deterministic batch output.`, 2);
+  }
+  for (const key of ["overwrite", "verbose"]) {
+    if (job[key] !== undefined && typeof job[key] !== "boolean") {
+      throw new CliError(`jobs[${index}].${key} must be true or false.`, 2);
+    }
+  }
+
+  return {
+    id,
+    args: {
+      _: [],
+      reference: batchStringArray(job.references, `jobs[${index}].references`),
+      "reference-role": batchStringArray(
+        job.reference_roles,
+        `jobs[${index}].reference_roles`,
+      ),
+      preserve: batchStringArray(job.preserve, `jobs[${index}].preserve`),
+      avoid: batchStringArray(job.avoid, `jobs[${index}].avoid`),
+      "exact-text": batchStringArray(job.exact_text, `jobs[${index}].exact_text`),
+      prompt: job.prompt,
+      out: job.out,
+      cwd: batchArgs.cwd,
+      mode: job.mode,
+      "edit-target": job.edit_target,
+      region: job.region,
+      quality: job.quality,
+      size: job.size,
+      background: job.background,
+      "timeout-seconds": job.timeout_seconds ?? batchArgs["timeout-seconds"],
+      overwrite: job.overwrite ?? Boolean(batchArgs.overwrite),
+      verbose: job.verbose ?? Boolean(batchArgs.verbose),
+    },
+  };
+}
+
+async function loadBatch(args) {
+  assertKnownBatchOptions(args);
+  const workspace = await resolveWorkspace(args.cwd);
+  const rawManifest = String(args.manifest || "").trim();
+  if (!rawManifest) throw new CliError("batch requires --manifest PATH.", 2);
+  const manifestPath = path.resolve(workspace, rawManifest);
+  if (!isWithin(workspace, manifestPath)) {
+    throw new CliError(`Batch manifest must stay inside the active workspace: ${manifestPath}`, 2);
+  }
+  const manifestInfo = await stat(manifestPath).catch(() => null);
+  if (!manifestInfo?.isFile()) {
+    throw new CliError(`Batch manifest is not a readable file: ${manifestPath}`, 2);
+  }
+  if (manifestInfo.size > 1024 * 1024) {
+    throw new CliError("Batch manifest must be 1 MiB or smaller.", 2);
+  }
+  let manifest;
+  try {
+    manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  } catch (error) {
+    throw new CliError(`Batch manifest is not valid JSON: ${sanitizeText(error.message)}`, 2);
+  }
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+    throw new CliError("Batch manifest must be a JSON object with a jobs array.", 2);
+  }
+  const topUnknown = Object.keys(manifest).filter((key) => !new Set(["version", "jobs"]).has(key));
+  if (topUnknown.length) {
+    throw new CliError(`Batch manifest has unknown field(s): ${topUnknown.join(", ")}.`, 2);
+  }
+  if (manifest.version !== undefined && manifest.version !== 1) {
+    throw new CliError("Batch manifest version must be 1.", 2);
+  }
+  if (!Array.isArray(manifest.jobs) || manifest.jobs.length < 1) {
+    throw new CliError("Batch manifest jobs must contain at least one image job.", 2);
+  }
+  const concurrency = Number(args.concurrency ?? DEFAULT_BATCH_CONCURRENCY);
+  if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > MAX_BATCH_CONCURRENCY) {
+    throw new CliError(
+      `--concurrency must be an integer between 1 and ${MAX_BATCH_CONCURRENCY}.`,
+      2,
+    );
+  }
+
+  const entries = [];
+  const ids = new Set();
+  for (let index = 0; index < manifest.jobs.length; index += 1) {
+    const prepared = batchJobArgs(manifest.jobs[index], index, args);
+    if (ids.has(prepared.id)) {
+      throw new CliError(`Duplicate batch job id: ${prepared.id}`, 2);
+    }
+    ids.add(prepared.id);
+    entries.push({ id: prepared.id, options: await normalizeGenerateOptions(prepared.args) });
+  }
+
+  const outputs = new Map();
+  for (const entry of entries) {
+    const outputKey = comparablePath(entry.options.output);
+    if (outputs.has(outputKey)) {
+      throw new CliError(
+        `Batch jobs ${outputs.get(outputKey)} and ${entry.id} resolve to the same output path.`,
+        2,
+      );
+    }
+    outputs.set(outputKey, entry.id);
+  }
+  for (const entry of entries) {
+    for (const input of attachmentPaths(entry.options)) {
+      const producingJob = outputs.get(comparablePath(input));
+      if (producingJob) {
+        throw new CliError(
+          `Batch jobs must be independent: ${entry.id} reads the output of ${producingJob}. Run dependent edits sequentially.`,
+          2,
+        );
+      }
+    }
+  }
+
+  return { concurrency, entries, manifestPath, workspace };
+}
+
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  let active = 0;
+  let peak = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= items.length) return;
+      active += 1;
+      peak = Math.max(peak, active);
+      try {
+        results[index] = await worker(items[index], index);
+      } finally {
+        active -= 1;
+      }
+    }
+  });
+  await Promise.all(runners);
+  return { peak, results };
+}
+
+function printBatchResult(result, asJson) {
+  if (asJson) {
+    printResult(result, true);
+    return;
+  }
+  process.stdout.write(`BATCH=${result.check_only ? "checked" : "completed"}\n`);
+  process.stdout.write(`TOTAL=${result.jobs_total}\n`);
+  if (result.check_only) process.stdout.write(`CHECKED=${result.jobs_checked}\n`);
+  else process.stdout.write(`SUCCEEDED=${result.jobs_succeeded}\n`);
+  process.stdout.write(`FAILED=${result.jobs_failed}\n`);
+  process.stdout.write(`CONCURRENCY=${result.concurrency}\n`);
+  for (const item of result.results) {
+    if (item.ok && item.path) {
+      const pathLabel = result.check_only ? "PLANNED_PATH" : "PATH";
+      process.stdout.write(`${pathLabel}[${item.id}]=${item.path}\n`);
+      if (!result.check_only) process.stdout.write(`MARKDOWN[${item.id}]=${item.markdown}\n`);
+    } else if (!item.ok) {
+      const error = sanitizeText(item.error).replace(/\s+/g, " ").trim();
+      process.stdout.write(`ERROR[${item.id}]=${error}\n`);
+    }
+  }
+}
+
+async function runBatch(args) {
+  const batch = await loadBatch(args);
+  const checkOnly = Boolean(args["check-only"]);
+  let auth = null;
+  if (!checkOnly) {
+    auth = inspectSubscriptionAuth();
+    if (!auth.codex.available || auth.verified !== true) {
+      const reason = !auth.codex.available
+        ? "Codex CLI is not installed"
+        : "ChatGPT subscription authentication is not verified";
+      throw new CliError(`${reason}. Evidence: ${auth.evidence}`, 3);
+    }
+  }
+
+  const run = await mapWithConcurrency(batch.entries, batch.concurrency, async (entry) => {
+    if (checkOnly) {
+      await new Promise((resolve) => setImmediate(resolve));
+      return {
+        id: entry.id,
+        ...imageRouteReceipt(entry.options),
+        check_only: true,
+        generation_started: false,
+        markdown: markdownFor(entry.options.output),
+      };
+    }
+    try {
+      return { id: entry.id, ...(await executeGeneration(entry.options, auth)) };
+    } catch (error) {
+      return {
+        id: entry.id,
+        ok: false,
+        error: sanitizeText(error?.message || error),
+      };
+    }
+  });
+
+  const succeeded = run.results.filter((item) => item.ok).length;
+  const result = {
+    ok: succeeded === run.results.length,
+    batch: true,
+    check_only: checkOnly,
+    manifest: batch.manifestPath,
+    workspace: batch.workspace,
+    jobs_total: run.results.length,
+    jobs_checked: checkOnly ? succeeded : 0,
+    jobs_succeeded: checkOnly ? 0 : succeeded,
+    jobs_failed: run.results.length - succeeded,
+    concurrency: batch.concurrency,
+    peak_concurrency: run.peak,
+    authentication_checks: checkOnly ? 0 : 1,
+    diagnostics_run: Boolean(auth?.diagnosticUsed),
+    diagnostics_per_job: 0,
+    independent_jobs_only: true,
+    usage_note: checkOnly
+      ? "No sign-in check or image generation was performed."
+      : "Each job is a separate built-in image generation and consumes included Codex usage.",
+    results: run.results,
+  };
+  printBatchResult(result, Boolean(args.json));
+  if (!result.ok) process.exitCode = 1;
+}
+
 async function runPlan(args) {
   const options = await normalizeGenerateOptions(args);
   const result = {
@@ -1511,19 +1884,7 @@ async function runGenerate(args) {
     return;
   }
 
-  await generateWithSubscription(options, auth);
-  const validation = await validateImage(options.output, {
-    requireTransparency: /transparent|alpha/i.test(options.background),
-  });
-  const result = {
-    ...route,
-    bytes: validation.bytes,
-    format: validation.format,
-    width: validation.width,
-    height: validation.height,
-    has_transparency: validation.has_transparency,
-    markdown: markdownFor(options.output),
-  };
+  const result = await executeGeneration(options, auth);
   if (args.json) {
     printResult(result, true);
   } else {
@@ -1546,7 +1907,8 @@ async function main() {
     );
   }
   if (
-    new Set(["bootstrap", "install-codex", "login", "generate"]).has(command) &&
+    (new Set(["bootstrap", "install-codex", "login", "generate"]).has(command) ||
+      (command === "batch" && !args["check-only"])) &&
     !platformRuntime().supported
   ) {
     const platform = platformRuntime();
@@ -1566,6 +1928,7 @@ async function main() {
   if (command === "inspect") return await runInspect(args);
   if (command === "plan") return await runPlan(args);
   if (command === "generate") return await runGenerate(args);
+  if (command === "batch") return await runBatch(args);
   throw new CliError(`Unknown command: ${command}\n\n${usage()}`, 2);
 }
 

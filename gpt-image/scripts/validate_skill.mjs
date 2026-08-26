@@ -25,6 +25,7 @@ function requireCondition(condition, message) {
 const requiredFiles = [
   path.join(REPOSITORY_ROOT, "README.md"),
   path.join(REPOSITORY_ROOT, "AGENT_INSTALL.md"),
+  path.join(REPOSITORY_ROOT, ".github", "fixtures", "batch-manifest.json"),
   path.join(REPOSITORY_ROOT, ".github", "workflows", "validate.yml"),
   path.join(SKILL_ROOT, "SKILL.md"),
   path.join(SKILL_ROOT, "agents", "openai.yaml"),
@@ -91,6 +92,10 @@ for (const token of [
   "require-transparency",
   "inspect",
   "plan",
+  "batch --manifest",
+  "mapWithConcurrency",
+  "authentication_checks",
+  "diagnostics_run",
 ]) {
   requireCondition(runner.includes(token), `Runner is missing required guard or platform token: ${token}`);
 }
@@ -104,14 +109,24 @@ requireCondition(
 );
 requireCondition(!runner.includes("generation_dry_run"), "Bootstrap must not require a no-image generation check.");
 
-for (const token of ["Windows", "WSL2", "Node.js 22", "best_practice_pass", "verify-installers", "bootstrap --target all --yes", "$gpt-image", "/gpt-image", "Multiple references", "--edit-target", "--reference-role", "capabilities --json", "inspect --input", "prompt is authoritative", "Revisions always edit the latest result", "Why generated images no longer have SHA receipts", "What the agent shows after installation", "Common aspect-ratio requests", "translated into the user's language", "setup check that does not create an image"]) {
+for (const token of ["Windows", "WSL2", "Node.js 22", "best_practice_pass", "verify-installers", "bootstrap --target all --yes", "$gpt-image", "/gpt-image", "Multiple references", "--edit-target", "--reference-role", "capabilities --json", "inspect --input", "prompt is authoritative", "Revisions always edit the latest result", "Why generated images no longer have SHA receipts", "What the agent shows after installation", "Common aspect-ratio requests", "translated into the user's language", "setup check that does not create an image", "Parallel independent images", "batch --manifest", "--check-only", "one auth check", "zero diagnostic gates per job"]) {
   requireCondition(readme.includes(token), `README is missing cross-platform guidance: ${token}`);
 }
 
-for (const token of ["pass it through unchanged", "generated-images/inputs/", "previously returned output", "every bridge call as ephemeral", "Do not require SHA-256", "present `getting_started` once", "Do not repeat this guide", "setup check that does not create an image"]) {
+for (const token of ["pass it through unchanged", "generated-images/inputs/", "previously returned output", "every bridge call as ephemeral", "Do not require SHA-256", "present `getting_started` once", "Do not repeat this guide", "setup check that does not create an image", "Do not run `doctor`, `plan`, `inspect`, `capabilities`", "checks ChatGPT auth once for the whole run", "Never put a revision chain in one batch"]) {
   requireCondition(skill.includes(token), `SKILL.md is missing a lightweight fidelity/reference rule: ${token}`);
 }
 requireCondition(!skill.includes("For vague requests"), "SKILL.md must not encourage inferred prompt expansion.");
+
+const batchBody = runner.match(/async function runBatch\(args\) \{[\s\S]*?\n\}(?=\n\nasync function runPlan)/)?.[0] || "";
+requireCondition(Boolean(batchBody), "Runner must contain the bounded batch implementation.");
+requireCondition(!batchBody.includes("buildDoctorReport"), "Batch must not run a Doctor gate.");
+requireCondition(!batchBody.includes("runPlan"), "Batch must not run a planning gate.");
+requireCondition(!batchBody.includes("runInspect"), "Batch must not run an inspection gate.");
+requireCondition(
+  runner.includes("const DEFAULT_BATCH_CONCURRENCY = 2") && runner.includes("const MAX_BATCH_CONCURRENCY = 4"),
+  "Batch concurrency must remain bounded at a conservative subscription default.",
+);
 
 requireCondition(runner.includes('const SKILL_NAME = "gpt-image"'), "Runner skill name must be gpt-image.");
 requireCondition(runner.includes("owned-legacy-link"), "Runner must safely migrate repository-owned legacy links.");
@@ -122,6 +137,7 @@ const result = {
     api_endpoint_absent: !runner.includes("https://api.openai.com") && !runner.includes("/v1/images"),
     description_present: Boolean(description),
     reference_workflows_present: await exists(path.join(SKILL_ROOT, "references", "image-workflows.md")),
+    batch_manifest_fixture_present: await exists(path.join(REPOSITORY_ROOT, ".github", "fixtures", "batch-manifest.json")),
     required_files: requiredFiles.length,
     skill_lines: skill.split(/\r?\n/).length,
   },

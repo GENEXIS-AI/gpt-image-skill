@@ -97,6 +97,55 @@ Do not manufacture values for these flags. A phrase such as “change only the i
 
 For transparent output, `--background transparent` enables a minimal alpha check after generation. Exact text and dense layouts may still need user review, but they do not require an automatic quality gate.
 
+## Parallel batch generation
+
+Use `batch` for independent images that can be generated in any order. The CLI parses the manifest and resolves its paths once, checks ChatGPT authentication once for the entire live run, then starts separate ephemeral `codex exec` image jobs with bounded concurrency. It does not run Doctor, planning, output inspection, or automatic retries for each job.
+
+Create a JSON file inside the active workspace:
+
+```json
+{
+  "version": 1,
+  "jobs": [
+    {
+      "id": "wide-hero",
+      "prompt": "A cobalt-blue glass robot on a warm off-white background.",
+      "out": "generated-images/wide-hero.png",
+      "size": "16:9",
+      "quality": "high quality"
+    },
+    {
+      "id": "square-reference",
+      "prompt": "Draw this character riding a bicycle.",
+      "out": "generated-images/square-reference.png",
+      "references": ["references/robot.png"],
+      "reference_roles": ["character reference"],
+      "size": "1:1"
+    }
+  ]
+}
+```
+
+Run it from the workspace:
+
+```bash
+node <skill-folder>/scripts/gpt_image.mjs batch \
+  --manifest "image-jobs.json" \
+  --concurrency 2
+```
+
+Concurrency defaults to 2 and is capped at 4 to avoid an unbounded subscription burst. Every job is a separate built-in image generation and consumes included Codex usage. Successful jobs return their own `PATH[id]` and `MARKDOWN[id]`; one failed job does not erase other independent results, and the CLI does not retry it automatically or switch to an API route.
+
+Each job requires `prompt` and `out`. It may also use `mode`, `edit_target`, `references`, `reference_roles`, `region`, `preserve`, `avoid`, `exact_text`, `quality`, `size`, `background`, `timeout_seconds`, `overwrite`, or `verbose`. Field names use JSON underscores. Prompts remain verbatim.
+
+Output paths must be unique. A batch output cannot be another batch job's input, even when that file already exists, because that would create a race. Run dependent edits sequentially:
+
+```text
+generate A → receive A path → generate --mode edit --edit-target A
+```
+
+To check only manifest structure, input files, output paths, and parallel scheduling without checking sign-in or generating images, use `--check-only`. In user-facing language, call this “checking the batch without creating images.” It is optional, not a required gate before a normal batch.
+
 ## Optional diagnostics
 
 Normal generation does not require planning or a no-image setup check. Use them only to debug paths, attachment order, sign-in, or bridge behavior. When speaking to the user, describe `--dry-run` as “a setup check that does not create an image”:

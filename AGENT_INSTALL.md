@@ -29,6 +29,8 @@ node gpt-image/scripts/validate_skill.mjs
 node gpt-image/scripts/gpt_image.mjs bootstrap --target all --yes --json
 ```
 
+These are one-time installation checks, not image-generation gates. `bootstrap` reuses the auth result it already obtains and returns one consolidated readiness report. Do not add a separate `doctor`, `plan`, `inspect`, or no-image generation check when bootstrap already passes.
+
 6. Let the user personally complete any browser/device authorization. Never request or read their password, token, API key, or `~/.codex/auth.json`.
 7. If an installer changed `PATH`, open a new shell and rerun the bootstrap command. If API-key auth already exists, do not log out automatically; explain the conflict and ask for explicit authorization to replace that authentication.
 8. Require the final receipt to show:

@@ -1,11 +1,11 @@
 ---
 name: gpt-image
-description: Generate or edit GPT raster images through the user's ChatGPT subscription, preserve the user's prompt verbatim, pass local reference images into the actual generation call, save results inside the active workspace, and show them inline from Codex, Claude Code, or compatible local agents. Use for text-to-image, reference-guided generation, edits, follow-up revisions, variants, or subscription-backed image setup. Prefer host-native image_gen and otherwise bridge through Codex CLI with Sign in with ChatGPT. Never use the OpenAI Images API, OPENAI_API_KEY, or API-key Codex login.
+description: Generate or edit raster images through the user's ChatGPT subscription and save or preview workspace PNGs. Use for text-to-image, local-reference generation, edits, follow-up revisions, variants, independent parallel batches, or subscription-backed setup in Codex, Claude Code, and compatible local agents. Preserve prompts verbatim and attach actual reference files. Prefer host-native image_gen; otherwise use Codex CLI with ChatGPT sign-in. Never use the Images API, OPENAI_API_KEY, or API-key login.
 ---
 
 # GPT Image Skill
 
-Generate or edit one raster image, save it under the current workspace, and show it in chat.
+Generate or edit one raster image—or a small set of independent images—save results under the current workspace, and show them in chat.
 
 ## Keep the subscription boundary
 
@@ -50,7 +50,7 @@ Check `node --version` first. If Node.js is absent or older than 22, follow [pla
 node <skill-folder>/scripts/gpt_image.mjs bootstrap --target all --yes --json
 ```
 
-The command installs non-destructive Codex and Claude skill links, installs a missing Codex CLI from the official platform installer, starts Sign in with ChatGPT when signed out, and returns one doctor report plus `getting_started`. It does not generate an image or require a no-image setup check.
+The command installs non-destructive Codex and Claude skill links, installs a missing Codex CLI from the official platform installer, starts Sign in with ChatGPT when signed out, and returns one consolidated readiness report plus `getting_started`. It reuses the auth result already obtained during setup rather than running a second diagnostic pass. It does not generate an image or require a no-image setup check.
 
 After successful installation, present `getting_started` once in the user's language. Keep it brief: say setup is ready, list common ratio requests (`1:1`, `16:9`, `9:16`, `4:3`, `3:4`), mention natural-language quality phrases (`draft`, `high quality`, `high detail, final quality`), and show one creation example plus one reference or revision example. Explain that exact pixel dimensions may vary. Do not repeat this guide after ordinary image requests.
 
@@ -60,7 +60,7 @@ Use `doctor --json` for diagnosis. Follow its `next_action`; never improvise an 
 
 ## Generate with the bridge
 
-Run the requested generation directly. Planning and the no-image setup check (`--dry-run`) are optional troubleshooting tools, not prerequisites.
+Run the requested generation directly. Do not run `doctor`, `plan`, `inspect`, `capabilities`, or the no-image setup check (`--dry-run`) first unless the user asks or a real error needs diagnosis.
 
 ```bash
 node <skill-folder>/scripts/gpt_image.mjs generate \
@@ -90,6 +90,12 @@ node <skill-folder>/scripts/gpt_image.mjs generate \
 
 Use `--region`, `--preserve`, `--avoid`, `--exact-text`, `--size`, `--quality`, or `--background` only when the user explicitly supplied those details. The runner attaches the edit target first, then references in command-line order; strips API-related environment variables; verifies ChatGPT auth once; invokes built-in `$imagegen`; and saves a new PNG without overwriting by default.
 
+## Run independent images in parallel
+
+Use the CLI `batch` command only when the user requests two or more independent final images. Read the batch section of [image-workflows.md](references/image-workflows.md), write one workspace-local JSON manifest, then run `batch --manifest <path>`. The default concurrency is 2 and the maximum is 4. The batch checks ChatGPT auth once for the whole run and does not run Doctor, planning, inspection, or retries per job.
+
+Never put a revision chain in one batch. If image B edits image A, generate A first and then use its returned path in a normal sequential `generate --mode edit` call. Each parallel job consumes included Codex image-generation usage separately. If a limit rejects a job, report it without switching to an API route. Use `--check-only` only when the user requests a precheck or the manifest fails; describe it as **checking the batch without creating images**.
+
 ## Generate with a native host
 
 Call the native image tool once with the user's prompt unchanged. Pass the primary edit target and all references through the host's actual image-input mechanism; do not merely describe them in text. On a follow-up, include the last generated image as the edit target plus any still-needed references. Save or copy the selected result to `<workspace>/generated-images/` and render its absolute path.
@@ -100,8 +106,8 @@ Report success when:
 
 - generation used native `image_gen` or the ChatGPT-authenticated Codex bridge;
 - every requested reference was actually attached;
-- the output exists inside the workspace and has usable PNG bytes;
-- the response contains the absolute path and an inline image.
+- every output exists inside the workspace and has usable PNG bytes;
+- the response contains each absolute path and inline image.
 
 Do not require SHA-256, a plan, a no-image setup check, a large receipt, or a separate visual-inspection gate for normal generation. Check real transparency only when the user explicitly requests transparent output. Never star the repository automatically; request a Star politely only after a successful result.
 

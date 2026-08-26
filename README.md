@@ -2,14 +2,15 @@
 
 [![Validate skill](https://github.com/GENEXIS-AI/gpt-image-skill/actions/workflows/validate.yml/badge.svg)](https://github.com/GENEXIS-AI/gpt-image-skill/actions/workflows/validate.yml)
 
-Generate and edit GPT images from Codex, Claude Code, or another compatible local agent through the user's **ChatGPT subscription**. The skill keeps the original image prompt unchanged, passes real reference files into generation, saves the result in the active project, and shows it inline.
+Generate and edit GPT images from Codex, Claude Code, or another compatible local agent through the user's **ChatGPT subscription**. The skill keeps every original image prompt unchanged, passes real reference files into generation, saves results in the active project, and shows them inline. Independent images can run through a bounded parallel CLI batch.
 
 ```text
 install skill → Sign in with ChatGPT → exact user prompt + local image inputs
+              → single generate or bounded parallel batch
               → built-in $imagegen → <project>/generated-images/*.png
 ```
 
-> This repository does not call the OpenAI Images API and does not create a separately billed Images API request. Image generation still consumes included ChatGPT/Codex usage and remains subject to plan and workspace limits.
+> This repository does not call the OpenAI Images API and does not create a separately billed Images API request. Built-in image generation still consumes included ChatGPT/Codex usage and remains subject to plan and workspace limits. OpenAI notes that image generations use included limits 3–5× faster on average than similar non-image turns, depending on quality and size, so parallel batches should stay intentional and small.
 
 ![GPT Image Skill smoke test](./generated-images/subscription-workflow-smoke.png)
 
@@ -33,7 +34,8 @@ Do not use the Images API, OPENAI_API_KEY, or API-key login. Do not generate a l
 Pause only if administrator privileges are required, an unrelated existing path would be changed,
 local changes would be discarded, or existing Codex authentication would need to be replaced.
 Otherwise, install the required components, run bootstrap --target all --yes --json,
-and continue until doctor reports best_practice_pass=true.
+and continue until bootstrap's consolidated readiness report shows best_practice_pass=true.
+Do not add a separate doctor, plan, inspect, or no-image generation check when bootstrap passes.
 Finally, report the persistent clone path, both installed skill paths, and ChatGPT-auth evidence.
 Then give me the brief getting_started guide in my language: common aspect ratios,
 quality phrases, one creation example, and one reference or revision example.
@@ -93,6 +95,10 @@ quick ChatGPT-auth check → one generation → minimal PNG sanity check → PAT
 
 Planning, the setup check that does not create an image (`--dry-run`), `capabilities --json`, `inspect --input`, and detailed JSON remain available for troubleshooting. They are not required before a normal image request.
 
+### 5. Parallelism is explicit and bounded
+
+`generate` remains the one-image happy path. `batch` is a separate command for independent outputs: it resolves the manifest once, checks ChatGPT auth once, then runs separate ephemeral Codex image jobs with default concurrency 2 and maximum concurrency 4. It does not run Doctor, planning, inspection, or automatic retries per job. Revisions that depend on a previous result remain sequential.
+
 ## Features
 
 - Uses Codex's built-in `$imagegen` under **Sign in with ChatGPT**
@@ -100,8 +106,9 @@ Planning, the setup check that does not create an image (`--dry-run`), `capabili
 - Blocks `OPENAI_API_KEY`, API-key Codex login, and Images API fallback
 - Installs the same `gpt-image` skill for Codex and Claude Code
 - Preserves the user's prompt verbatim
-- Supports one or Multiple references with deterministic attachment order
+- Supports one or multiple references with deterministic attachment order
 - Supports existing-image edits, follow-up revisions, variations, compositing, transparency, exact text, and dense-layout drafts
+- Supports bounded parallel generation for independent CLI jobs with one auth check per batch
 - Saves only inside the active workspace and avoids overwrite by default
 - Returns `PATH=...` and absolute `MARKDOWN=...` after normal generation
 - Supports macOS, Linux, native Windows, and WSL2
@@ -117,6 +124,7 @@ Planning, the setup check that does not create an image (`--dry-run`), `capabili
 | Change the last generated image | Use the last returned path as the new `--edit-target` |
 | Variation | `--mode variation --edit-target PATH` |
 | Transparent output | Use `--background transparent` only when requested |
+| Independent images in parallel | `batch --manifest PATH`; default concurrency 2, maximum 4 |
 
 The edit target is Image 1. Supporting references follow in command-line order.
 
@@ -276,6 +284,42 @@ node ./gpt-image/scripts/gpt_image.mjs generate \
   --out "generated-images/combined.png"
 ```
 
+### Parallel independent images
+
+Create a workspace-local manifest such as `image-jobs.json`:
+
+```json
+{
+  "version": 1,
+  "jobs": [
+    {
+      "id": "wide-hero",
+      "prompt": "A cobalt-blue glass robot on a warm off-white background.",
+      "out": "generated-images/wide-hero.png",
+      "size": "16:9"
+    },
+    {
+      "id": "square-reference",
+      "prompt": "Draw this character riding a bicycle.",
+      "out": "generated-images/square-reference.png",
+      "references": ["references/robot.png"],
+      "reference_roles": ["character reference"],
+      "size": "1:1"
+    }
+  ]
+}
+```
+
+Then run:
+
+```bash
+node ./gpt-image/scripts/gpt_image.mjs batch \
+  --manifest "image-jobs.json" \
+  --concurrency 2
+```
+
+Each job uses the built-in subscription route separately and returns its own `PATH[id]` and `MARKDOWN[id]`. Jobs must be independent: if the second image edits the first, finish the first command and pass its returned path to a sequential `generate --mode edit` command. The runner does not retry failed jobs automatically and never switches to the Images API when a subscription limit is reached.
+
 ### Optional troubleshooting
 
 ```bash
@@ -286,6 +330,8 @@ node ./gpt-image/scripts/gpt_image.mjs inspect --input "generated-images/combine
 node ./gpt-image/scripts/gpt_image.mjs plan --prompt "test" --reference "/path/reference.png" --out "generated-images/test.png" --json
 # Check sign-in and paths without creating an image:
 node ./gpt-image/scripts/gpt_image.mjs generate --prompt "test" --out "generated-images/test.png" --dry-run --json
+# Check a batch manifest and scheduling without sign-in or image generation:
+node ./gpt-image/scripts/gpt_image.mjs batch --manifest "image-jobs.json" --check-only --json
 ```
 
 ## Why generated images no longer have SHA receipts
@@ -303,6 +349,7 @@ node ./gpt-image/scripts/gpt_image.mjs verify-installers --json
 - Removes `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`, and `CODEX_ACCESS_TOKEN` from Codex child processes.
 - Blocks generation unless redacted diagnostics establish ChatGPT authentication.
 - Calls `codex login status` once on the normal generation path; Codex Doctor is used only for explicit or ambiguous diagnosis.
+- Checks authentication once for a live batch, not once per job; no diagnostic command runs per job.
 - Contains no OpenAI Images API endpoint or `/v1/images` request.
 - Never reads auth files and never writes the generated image outside the active workspace.
 - Never overwrites an existing image unless `--overwrite` is explicit.
@@ -315,6 +362,7 @@ node ./gpt-image/scripts/gpt_image.mjs verify-installers --json
 - [x] Stable-path and actual-attachment contract for Claude Code references
 - [x] Last-output-as-edit-target contract for follow-up revisions
 - [x] Direct generation by default; planning, no-image setup checks, and detailed receipts are optional
+- [x] Explicit bounded parallel batch for independent images; one auth check and zero diagnostic gates per job
 - [x] One-time, user-language getting-started guide with ratio and quality examples
 - [x] Minimal output validation without generated-image hashes
 - [x] Node.js 22+, macOS, Linux, native Windows, and WSL2 setup guidance
