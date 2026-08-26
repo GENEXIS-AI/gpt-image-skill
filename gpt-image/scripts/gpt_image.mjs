@@ -154,9 +154,10 @@ Batch options:
   --json                  Print machine-readable output.
 
 Reference attachment order is deterministic: edit target first, then references.
-The user prompt is forwarded unchanged; attachment labels are routing metadata only.
+Each finalized image prompt is forwarded unchanged; attachment labels are routing metadata only.
 Planning and the no-image setup check are optional troubleshooting tools, not generation prerequisites.
 Batch performs one ChatGPT-auth check, then runs every job whose inputs already exist. Jobs may share references; output-dependent edits stay sequential.
+Each job prompt must describe one image. Keep ordering in job IDs and output paths, not in phrases such as "the first of five."
 
 Runtime:
   Node.js ${MIN_NODE_MAJOR}+ is required; the latest supported LTS is recommended.
@@ -847,7 +848,7 @@ function buildBridgePrompt(options) {
   return `Use $imagegen exactly once through Codex's built-in image generation capability.
 
 PROMPT FIDELITY CONTRACT (mandatory):
-- The text between BEGIN USER PROMPT and END USER PROMPT is the authoritative image request.
+- The text between BEGIN USER PROMPT and END USER PROMPT is the finalized request for this one image.
 - Pass that text through unchanged. Do not rewrite, expand, optimize, beautify, summarize, translate, or add creative details.
 - Do not invent composition, lighting, style, colors, objects, materials, text, exclusions, or preservation rules.
 - Use routing metadata only to attach the correct files and apply constraints the user explicitly supplied.
@@ -1442,6 +1443,8 @@ function capabilityReport() {
       shared_read_only_inputs_allowed: true,
       shared_anchor_variations: true,
       independent_design_concepts: true,
+      delegated_concept_prompts: true,
+      ordinal_metadata_in_prompts: false,
       output_dependencies_in_same_batch: false,
       default_concurrency: DEFAULT_BATCH_CONCURRENCY,
       maximum_concurrency: MAX_BATCH_CONCURRENCY,

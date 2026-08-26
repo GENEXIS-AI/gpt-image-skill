@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "jobs": [
+    {
+      "id": "bold-type",
+      "mode": "generate",
+      "prompt": "첨부된 카페라테 제품을 화면 중앙의 대형 히어로로 배치한 시선을 끄는 커피 광고 포스터. 굵은 타이포그래피와 강한 대각선 구도로 역동적인 캠페인 이미지를 구성한다.",
+      "references": ["generated-images/subscription-workflow-smoke.png"],
+      "reference_roles": ["광고할 커피 제품"],
+      "out": "generated-images/ci-coffee-bold-type.png"
+    },
+    {
+      "id": "cinematic-macro",
+      "mode": "generate",
+      "prompt": "첨부된 카페라테 제품의 질감과 차가운 물방울을 극적으로 보여주는 시선을 끄는 커피 광고 포스터. 제품을 클로즈업한 영화적 조명과 깊이감 있는 매크로 구도로 구성한다.",
+      "references": ["generated-images/subscription-workflow-smoke.png"],
+      "reference_roles": ["광고할 커피 제품"],
+      "out": "generated-images/ci-coffee-cinematic-macro.png"
+    },
+    {
+      "id": "minimal-gallery",
+      "mode": "generate",
+      "prompt": "넓은 여백 속에 첨부된 카페라테 제품을 조형물처럼 배치한 시선을 끄는 커피 광고 포스터. 절제된 그리드와 세련된 편집 디자인으로 프리미엄 인상을 만든다.",
+      "references": ["generated-images/subscription-workflow-smoke.png"],
+      "reference_roles": ["광고할 커피 제품"],
+      "out": "generated-images/ci-coffee-minimal-gallery.png"
+    },
+    {
+      "id": "neon-night",
+      "mode": "generate",
+      "prompt": "밤의 도심 네온사인을 배경으로 첨부된 카페라테 제품이 빛나는 시선을 끄는 커피 광고 포스터. 강한 색 대비와 반사광을 활용한 젊고 에너지 넘치는 캠페인으로 구성한다.",
+      "references": ["generated-images/subscription-workflow-smoke.png"],
+      "reference_roles": ["광고할 커피 제품"],
+      "out": "generated-images/ci-coffee-neon-night.png"
+    },
+    {
+      "id": "warm-editorial",
+      "mode": "generate",
+      "prompt": "따뜻한 오전의 카페 테이블 위에 첨부된 카페라테 제품을 자연스럽게 연출한 시선을 끄는 커피 광고 포스터. 부드러운 햇빛과 감성적인 잡지 화보 구도로 편안한 라이프스타일을 전달한다.",
+      "references": ["generated-images/subscription-workflow-smoke.png"],
+      "reference_roles": ["광고할 커피 제품"],
+      "out": "generated-images/ci-coffee-warm-editorial.png"
+    }
+  ]
+}

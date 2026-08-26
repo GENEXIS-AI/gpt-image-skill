@@ -2,10 +2,10 @@
 
 [![Validate skill](https://github.com/GENEXIS-AI/gpt-image-skill/actions/workflows/validate.yml/badge.svg)](https://github.com/GENEXIS-AI/gpt-image-skill/actions/workflows/validate.yml)
 
-Generate and edit GPT images from Codex, Claude Code, or another compatible local agent through the user's **ChatGPT subscription**. The skill keeps every original image prompt unchanged, passes real reference files into generation, saves results in the active project, and shows them inline. Multiple outputs—including shared-design variants and different concepts—use bounded parallel generation whenever their inputs are ready.
+Generate and edit GPT images from Codex, Claude Code, or another compatible local agent through the user's **ChatGPT subscription**. Direct prompts stay unchanged; when the user delegates several different designs, the agent develops a distinct image-ready prompt for each concept. Real reference files pass into generation, results stay in the active project, and ready outputs run with bounded parallelism.
 
 ```text
-install skill → Sign in with ChatGPT → exact user prompt + local image inputs
+install skill → Sign in with ChatGPT → direct prompt or delegated concept prompts + local image inputs
               → single generate or bounded parallel batch
               → built-in $imagegen → <project>/generated-images/*.png
 ```
@@ -65,9 +65,9 @@ These are common natural-language requests, not a fixed API size list. Other fra
 
 ## Design principles
 
-### 1. The prompt is authoritative
+### 1. The prompt is authoritative—and so is delegated creative intent
 
-The skill forwards the user's image request unchanged. It does not “improve” a short prompt by adding composition, lighting, visual style, colors, objects, materials, negative prompts, or preservation rules. Optional runner flags are included only when the user explicitly supplied those constraints.
+For one direct image or edit, the skill forwards the user's image request unchanged. It does not “improve” a short prompt with unsolicited details. A request such as “make five different poster designs” is different: it explicitly asks the agent to develop five creative concepts. The agent preserves the shared subject, references, brand, text, ratio, and other constraints, then sends one complete, meaningfully different image prompt per output. Job numbers remain in IDs and filenames, never in image prompts.
 
 ### 2. References are files, not descriptions
 
@@ -105,7 +105,7 @@ Planning, the setup check that does not create an image (`--dry-run`), `capabili
 - Uses a host-native `image_gen` tool directly when the calling host already exposes one
 - Blocks `OPENAI_API_KEY`, API-key Codex login, and Images API fallback
 - Installs the same `gpt-image` skill for Codex and Claude Code
-- Preserves the user's prompt verbatim
+- Preserves direct prompts verbatim and honors delegated multi-concept design work
 - Supports one or multiple references with deterministic attachment order
 - Supports existing-image edits, follow-up revisions, variations, compositing, transparency, exact text, and dense-layout drafts
 - Supports bounded parallel generation for independent concepts and shared-anchor variations
@@ -288,10 +288,11 @@ node ./gpt-image/scripts/gpt_image.mjs generate \
 
 ### Parallel multiple images
 
-The skill chooses one of two structures without asking the user to know the CLI:
+The skill chooses one of three structures without asking the user to know the CLI:
 
 - **Shared-anchor variations:** every job reads the same existing design. Use `variation` for the same composition in different styles, or use the design as the first reference when identity moves into different scenes or layouts.
-- **Independent concepts:** every job has its own prompt and relevant references. If the user asks only for several alternatives, the exact prompt can be reused without inventing styles.
+- **Delegated concepts:** “different designs,” “concepts,” “directions,” “options,” or “alternatives” asks the agent to develop one complete creative prompt per output while preserving shared constraints and references.
+- **Repeated renders:** a count without requested differences—or an explicit request to use the same prompt—reuses the exact image prompt.
 
 For shared-anchor style variations, create a workspace-local manifest such as `image-jobs.json`:
 
@@ -329,7 +330,7 @@ node ./gpt-image/scripts/gpt_image.mjs batch \
   --concurrency 2
 ```
 
-Several jobs may read the same anchor safely. Attach only the style reference relevant to that output after the shared design anchor; do not attach every style reference to every job. For different design concepts, omit the shared `edit_target` and give each job its own exact prompt and references.
+Several jobs may read the same anchor safely. Attach only the style reference relevant to that output after the shared design anchor; do not attach every style reference to every job. For different design concepts, omit the shared `edit_target` and give each job its own standalone creative prompt and relevant references. Do not append “this is the Nth option”; `id` and `out` already carry that metadata.
 
 If no common design image exists, generate the first requested output and use its returned path as the anchor for the remaining parallel variants. The skill does not generate an extra hidden anchor that consumes additional subscription usage. A batch output cannot feed another job in that same batch; mixed workflows run ready jobs in stages.
 

@@ -4,7 +4,7 @@ Read this reference for existing images, Claude Code attachments, multiple refer
 
 ## Core rule
 
-Keep the user's prompt unchanged. Reference labels exist only to route image files; they are not permission to add visual direction. Do not add style, composition, lighting, color, objects, text, negative prompts, or “helpful” preservation rules.
+Keep a direct image or edit prompt unchanged. A request for several **different** designs, concepts, directions, options, or alternatives explicitly delegates concept development: preserve the user's non-negotiable brief and references, then write a distinct image-ready prompt for each output. Reference labels only route files and are never separate permission to alter the brief.
 
 ## Pick the operation
 
@@ -107,11 +107,12 @@ Choose the relationship from the request itself; do not run `plan` first:
 | --- | --- |
 | Same design or composition in several styles | Shared edit target → parallel `variation` jobs |
 | Same character, product, or identity in different scenes/layouts | Shared first reference → parallel `generate` jobs |
-| Different concepts, compositions, or design directions | Independent `generate` jobs in one batch |
+| Different designs, concepts, options, or directions | Agent develops distinct prompts → independent `generate` jobs |
+| Several renders with no requested differences | Repeat the same image prompt in independent jobs |
 | A base image followed by variants | Generate the requested base → batch the variants |
 | Mixed dependencies | Batch all ready jobs → resolve outputs → batch the next ready jobs |
 
-If the user requests only “three alternatives” without asking for consistency, use independent jobs. Reuse the exact prompt for every job when no differences were supplied; natural generation variance provides alternatives without invented style directions.
+Words such as “different,” “alternatives,” “concepts,” “directions,” “options,” or “explore” authorize the agent to make creative choices needed to distinguish the requested outputs. A bare count does not: “make five” repeats the same visual request unless the surrounding message delegates differences.
 
 ### Shared-anchor variations
 
@@ -154,7 +155,15 @@ When no anchor exists, generate the first requested output in the user's stated 
 
 ### Independent design concepts
 
-For different concepts, create one job per requested direction. Give each job only its relevant content or style references. A common style reference may be attached to every job only when the user explicitly wants shared art direction.
+For delegated concepts, first extract the shared non-negotiable brief: subject or product, provided references, brand requirements, exact copy, audience, ratio, quality, and explicit exclusions. Then create the requested number of standalone image prompts in one internal pass.
+
+- Make each concept materially different in composition and art direction, not merely a synonym swap.
+- Keep the same product or identity reference on every job when it is the advertised subject.
+- Put only one image's creative direction in each prompt. Remove batch orchestration such as “make five images.”
+- Never append “this job is the first of five,” “option 2,” “2번째 시안,” or similar metadata. Use `id` and `out` for identity and ordering.
+- If the user supplied named directions, use those directions. If the user explicitly requested the exact same prompt, repeat it instead of developing concepts.
+
+For example, “Create five attention-grabbing coffee posters, each with a different design” calls for five complete concepts—such as a bold typographic layout, a cinematic product macro, a minimal gallery composition, a neon night campaign, and a warm editorial scene—while every job keeps the coffee-product reference. Those concepts are image prompts, not labels added after the original batch request.
 
 ```json
 {
@@ -174,7 +183,7 @@ For different concepts, create one job per requested direction. Give each job on
 }
 ```
 
-For one user message that contains shared words plus named output directions, copy the exact shared words and the exact relevant output phrase into each job. Separating those verbatim fragments with a newline is allowed; paraphrasing, filling in missing styles, or adding a design direction is not.
+For one user message that already contains named output directions, preserve each named direction and the shared constraints. For a delegated but unnamed exploration, the agent supplies the distinct directions. In both cases, each `prompt` must stand on its own as the instruction for one image.
 
 ### Run a ready batch
 

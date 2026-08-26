@@ -2,7 +2,7 @@ interface:
   display_name: "GPT Image Skill"
   short_description: "Generate or edit images with ChatGPT subscription"
   brand_color: "#0B57D0"
-  default_prompt: "Use $gpt-image with my prompt unchanged, attach every provided reference to the real generation call, save the image in this workspace, and show it inline."
+  default_prompt: "Use $gpt-image, preserve my constraints and references, develop distinct prompts when I request different concepts, save every result in this workspace, and show it inline."
 
 policy:
   allow_implicit_invocation: true

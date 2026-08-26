@@ -1,6 +1,6 @@
 ---
 name: gpt-image
-description: Generate or edit raster images through the user's ChatGPT subscription and save or preview workspace PNGs. Use for text-to-image, local-reference generation, edits, follow-up revisions, variants, multi-image batches, or subscription-backed setup in Codex, Claude Code, and compatible local agents. Preserve prompts verbatim and attach actual reference files. Prefer host-native image_gen; otherwise use Codex CLI with ChatGPT sign-in. Never use the Images API, OPENAI_API_KEY, or API-key login.
+description: Generate or edit raster images through the user's ChatGPT subscription and save or preview workspace PNGs. Use for text-to-image, local-reference generation, edits, follow-up revisions, variants, multi-image batches, or subscription-backed setup in Codex, Claude Code, and compatible local agents. Preserve direct prompts verbatim; develop distinct per-output prompts when the user delegates multiple concepts. Attach actual reference files. Prefer host-native image_gen; otherwise use Codex CLI with ChatGPT sign-in. Never use the Images API, OPENAI_API_KEY, or API-key login.
 ---
 
 # GPT Image Skill
@@ -24,11 +24,12 @@ Read [image-workflows.md](references/image-workflows.md) for references, Claude 
 
 ## Preserve the user's request
 
-- Treat the user's image prompt as authoritative and pass it through unchanged.
-- Do not rewrite, expand, optimize, translate, beautify, or add creative guidance.
-- Do not invent composition, lighting, style, color, objects, materials, text, negative prompts, or preservation rules.
-- For a multi-image request, each job may combine the exact shared words with that output's exact user-supplied phrase. Do not paraphrase either part or invent differences the user did not request.
-- Add a constraint only when the user explicitly supplied it through the prompt or a runner flag.
+- For a direct image or edit request, treat the user's image prompt as authoritative and pass it through unchanged. Do not rewrite, expand, optimize, translate, beautify, or add creative guidance.
+- Distinguish repeated renders from delegated concept development. “Make five images with this exact prompt” means repeat the same prompt. “Make five different designs/concepts/options” means the user has asked the agent to develop five distinct creative directions.
+- For delegated concepts, preserve every explicit subject, product, reference, brand, text, ratio, quality, and exclusion constraint, then write one standalone image-ready prompt per output. Make the concepts meaningfully different in composition and art direction; do not merely number the same prompt.
+- Never append ordinal or orchestration metadata such as “this is the first of five,” “1st option,” or “1번째 시안” to an image prompt. The job `id` and output path carry ordering.
+- When the user names the individual directions, follow those directions instead of replacing them. When the user does not delegate creative differences, do not invent them.
+- Outside creative choices the user delegated, add a constraint only when the user explicitly supplied it through the prompt or a runner flag.
 - Ask one concise question only when missing information makes the requested operation impossible. Otherwise generate without prompt coaching.
 
 ## Resolve references before generation
@@ -97,15 +98,16 @@ When the user requests two or more outputs, use parallel calls for every job who
 
 Classify the request once without running a planning command:
 
-- **Same design, different styles:** reuse one shared design anchor. For the same composition with style changes, run parallel `variation` jobs with the same `edit_target`. For the same character or product in new scenes or layouts, run parallel `generate` jobs with the same first reference. Attach only that job's style reference after the shared anchor.
-- **Different design concepts:** create one job per concept with its own prompt and references, then run them together. If the user asks only for a number of alternatives and does not request consistency, treat them as independent alternatives.
+- **Same design, different styles:** reuse one shared design anchor. For the same composition with style changes, run parallel `variation` jobs with the same `edit_target`. For the same character or product in new scenes or layouts, run parallel `generate` jobs with the same first reference. Use user-named styles, or choose distinct style concepts when the user delegated that choice. Attach only that job's style reference after the shared anchor.
+- **Different design concepts:** when the user asks for different designs, concepts, directions, options, or alternatives, develop one complete creative concept and image-ready prompt per output, keep the shared brief and references, then run them together. Do this internally in one pass; do not run a separate planning command or ask for concept approval unless the user requested it.
+- **Repeated renders:** when the user requests several images but does not ask for different concepts—or explicitly says to use the same prompt—reuse the exact image prompt for each independent job.
 - **No anchor yet:** generate the first requested output normally, then use that returned image as the shared anchor for the remaining parallel jobs. Do not generate an extra hidden anchor that the user did not request.
 
 Never put an output-dependent revision in the same batch as its source. In a mixed request, batch all currently ready jobs, resolve the dependency, then batch the newly ready jobs. The default concurrency is 2 and the maximum is 4. A batch checks ChatGPT auth once and does not run Doctor, planning, inspection, or retries per job. If a limit rejects a job, report it without switching to an API route. Use `--check-only` only when the user requests a precheck or the manifest fails; describe it as **checking the batch without creating images**.
 
 ## Generate with a native host
 
-For one output, call the native image tool once with the user's prompt unchanged. For multiple outputs, issue one call per output concurrently when the host supports it and the calls have no unresolved dependency. Apply the same shared-anchor versus independent-concept routing above. Pass the primary edit target and all references through the host's actual image-input mechanism; do not merely describe them in text. On a follow-up, include the last generated image as the edit target plus any still-needed references. Save or copy every result to `<workspace>/generated-images/` and render each absolute path.
+For one direct output, call the native image tool once with the user's prompt unchanged. For multiple outputs, finalize one prompt per output under the rules above, then issue one call per output concurrently when the host supports it and the calls have no unresolved dependency. Apply the same shared-anchor versus independent-concept routing. Pass the primary edit target and all references through the host's actual image-input mechanism; do not merely describe them in text. On a follow-up, include the last generated image as the edit target plus any still-needed references. Save or copy every result to `<workspace>/generated-images/` and render each absolute path.
 
 ## Finish lightly
 

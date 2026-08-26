@@ -26,6 +26,7 @@ const requiredFiles = [
   path.join(REPOSITORY_ROOT, "README.md"),
   path.join(REPOSITORY_ROOT, "AGENT_INSTALL.md"),
   path.join(REPOSITORY_ROOT, ".github", "fixtures", "batch-manifest.json"),
+  path.join(REPOSITORY_ROOT, ".github", "fixtures", "delegated-concepts-manifest.json"),
   path.join(REPOSITORY_ROOT, ".github", "workflows", "validate.yml"),
   path.join(SKILL_ROOT, "SKILL.md"),
   path.join(SKILL_ROOT, "agents", "openai.yaml"),
@@ -43,14 +44,28 @@ const skillPath = path.join(SKILL_ROOT, "SKILL.md");
 const runnerPath = path.join(SKILL_ROOT, "scripts", "gpt_image.mjs");
 const readmePath = path.join(REPOSITORY_ROOT, "README.md");
 const batchManifestPath = path.join(REPOSITORY_ROOT, ".github", "fixtures", "batch-manifest.json");
+const delegatedManifestPath = path.join(
+  REPOSITORY_ROOT,
+  ".github",
+  "fixtures",
+  "delegated-concepts-manifest.json",
+);
+const agentMetadataPath = path.join(SKILL_ROOT, "agents", "openai.yaml");
 const skill = await readFile(skillPath, "utf8");
 const runner = await readFile(runnerPath, "utf8");
 const readme = await readFile(readmePath, "utf8");
+const agentMetadata = await readFile(agentMetadataPath, "utf8");
 let batchManifest = { jobs: [] };
+let delegatedManifest = { jobs: [] };
 try {
   batchManifest = JSON.parse(await readFile(batchManifestPath, "utf8"));
 } catch (error) {
   failures.push(`Batch manifest fixture must be valid JSON: ${error.message}`);
+}
+try {
+  delegatedManifest = JSON.parse(await readFile(delegatedManifestPath, "utf8"));
+} catch (error) {
+  failures.push(`Delegated-concepts fixture must be valid JSON: ${error.message}`);
 }
 
 const frontmatter = skill.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
@@ -106,6 +121,8 @@ for (const token of [
   "shared_read_only_inputs_allowed",
   "shared_anchor_variations",
   "independent_design_concepts",
+  "delegated_concept_prompts",
+  "ordinal_metadata_in_prompts",
   "output_dependencies_in_same_batch",
 ]) {
   requireCondition(runner.includes(token), `Runner is missing required guard or platform token: ${token}`);
@@ -120,14 +137,18 @@ requireCondition(
 );
 requireCondition(!runner.includes("generation_dry_run"), "Bootstrap must not require a no-image generation check.");
 
-for (const token of ["Windows", "WSL2", "Node.js 22", "best_practice_pass", "verify-installers", "bootstrap --target all --yes", "$gpt-image", "/gpt-image", "Multiple references", "--edit-target", "--reference-role", "capabilities --json", "inspect --input", "prompt is authoritative", "Revisions always edit the latest result", "Why generated images no longer have SHA receipts", "What the agent shows after installation", "Common aspect-ratio requests", "translated into the user's language", "setup check that does not create an image", "Parallel multiple images", "Shared-anchor variations", "batch --manifest", "--check-only", "one auth check", "zero diagnostic gates per job"]) {
+for (const token of ["Windows", "WSL2", "Node.js 22", "best_practice_pass", "verify-installers", "bootstrap --target all --yes", "$gpt-image", "/gpt-image", "Multiple references", "--edit-target", "--reference-role", "capabilities --json", "inspect --input", "prompt is authoritative", "delegated creative intent", "Revisions always edit the latest result", "Why generated images no longer have SHA receipts", "What the agent shows after installation", "Common aspect-ratio requests", "translated into the user's language", "setup check that does not create an image", "Parallel multiple images", "Shared-anchor variations", "Delegated concepts", "Repeated renders", "batch --manifest", "--check-only", "one auth check", "zero diagnostic gates per job"]) {
   requireCondition(readme.includes(token), `README is missing cross-platform guidance: ${token}`);
 }
 
-for (const token of ["pass it through unchanged", "generated-images/inputs/", "previously returned output", "every bridge call as ephemeral", "Do not require SHA-256", "present `getting_started` once", "Do not repeat this guide", "setup check that does not create an image", "Do not run `doctor`, `plan`, `inspect`, `capabilities`", "A batch checks ChatGPT auth once", "Same design, different styles", "Do not generate an extra hidden anchor", "Never put an output-dependent revision in the same batch as its source"]) {
+for (const token of ["pass it through unchanged", "generated-images/inputs/", "previously returned output", "every bridge call as ephemeral", "Do not require SHA-256", "present `getting_started` once", "Do not repeat this guide", "setup check that does not create an image", "Do not run `doctor`, `plan`, `inspect`, `capabilities`", "A batch checks ChatGPT auth once", "Same design, different styles", "meaningfully different", "Never append ordinal", "Repeated renders", "Do not generate an extra hidden anchor", "Never put an output-dependent revision in the same batch as its source"]) {
   requireCondition(skill.includes(token), `SKILL.md is missing a lightweight fidelity/reference rule: ${token}`);
 }
 requireCondition(!skill.includes("For vague requests"), "SKILL.md must not encourage inferred prompt expansion.");
+requireCondition(
+  agentMetadata.includes("$gpt-image") && agentMetadata.includes("develop distinct prompts"),
+  "agents/openai.yaml must expose the delegated-concept behavior in its default prompt.",
+);
 
 const batchJobs = Array.isArray(batchManifest.jobs) ? batchManifest.jobs : [];
 const sharedVariations = batchJobs.filter((job) => job.mode === "variation" && job.edit_target);
@@ -148,6 +169,38 @@ requireCondition(independentConcepts.length >= 1, "Batch fixture must also exerc
 requireCondition(
   new Set(batchJobs.map((job) => job.out)).size === batchJobs.length,
   "Every batch fixture job must use a unique output path.",
+);
+
+const delegatedJobs = Array.isArray(delegatedManifest.jobs) ? delegatedManifest.jobs : [];
+const delegatedPrompts = delegatedJobs.map((job) => job.prompt);
+const forbiddenOrdinalMetadata = /(this (?:job|task|image)|(?:first|second|third|fourth|fifth) of five|\b[1-5](?:st|nd|rd|th) (?:option|concept)|이 작업|[1-5]\s*번째\s*시안)/i;
+const batchOrchestration = /(make five|five (?:images|posters)|5\s*장|각각\s*다른\s*디자인)/i;
+requireCondition(delegatedJobs.length === 5, "Delegated-concepts fixture must contain five image jobs.");
+requireCondition(
+  new Set(delegatedPrompts).size === delegatedJobs.length,
+  "Every delegated concept must have a distinct image-ready prompt.",
+);
+requireCondition(
+  delegatedPrompts.every((prompt) => typeof prompt === "string" && !forbiddenOrdinalMetadata.test(prompt)),
+  "Delegated concept prompts must not contain ordinal job metadata.",
+);
+requireCondition(
+  delegatedPrompts.every((prompt) => typeof prompt === "string" && !batchOrchestration.test(prompt)),
+  "Delegated concept prompts must not repeat multi-output orchestration.",
+);
+requireCondition(
+  delegatedJobs.every(
+    (job) =>
+      job.mode === "generate" &&
+      job.references?.length === 1 &&
+      job.reference_roles?.length === 1 &&
+      /제품/.test(job.reference_roles[0]),
+  ),
+  "Every delegated coffee concept must retain the shared product reference.",
+);
+requireCondition(
+  new Set(delegatedJobs.map((job) => job.out)).size === delegatedJobs.length,
+  "Every delegated concept must use a unique output path.",
 );
 
 const batchBody = runner.match(/async function runBatch\(args\) \{[\s\S]*?\n\}(?=\n\nasync function runPlan)/)?.[0] || "";
@@ -171,6 +224,8 @@ const result = {
     reference_workflows_present: await exists(path.join(SKILL_ROOT, "references", "image-workflows.md")),
     batch_manifest_fixture_present: await exists(path.join(REPOSITORY_ROOT, ".github", "fixtures", "batch-manifest.json")),
     multi_image_fixture_present: sharedVariations.length >= 2 && independentConcepts.length >= 1,
+    delegated_concept_fixture_present:
+      delegatedJobs.length === 5 && new Set(delegatedPrompts).size === delegatedJobs.length,
     required_files: requiredFiles.length,
     skill_lines: skill.split(/\r?\n/).length,
   },
