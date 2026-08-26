@@ -1,81 +1,85 @@
 # GPT Image Skill
 
-Claude Code, Codex, 또는 호환되는 로컬 에이전트에서 **OpenAI Images API를 호출하지 않고**, 사용자의 **ChatGPT 구독으로 로그인한 Codex**를 통해 GPT 이미지를 생성·편집하는 Agent Skill입니다. 결과는 현재 프로젝트에 저장되고, 검증된 절대 경로로 채팅에 표시됩니다.
+[![Validate skill](https://github.com/GENEXIS-AI/gpt-image-skill/actions/workflows/validate.yml/badge.svg)](https://github.com/GENEXIS-AI/gpt-image-skill/actions/workflows/validate.yml)
+
+Generate or edit GPT images from Codex, Claude Code, or another compatible local agent using the user's **ChatGPT subscription**—without calling the OpenAI Images API. The skill saves the result inside the active project, validates it, and returns an absolute Markdown path so supported chat clients can display it inline.
 
 ```text
-skill install → 환경 자동 점검 → Sign in with ChatGPT → $imagegen
-             → <현재 프로젝트>/generated-images/*.png → 채팅 미리보기
+install skill → inspect environment → Sign in with ChatGPT → $imagegen
+              → <active project>/generated-images/*.png → inline preview
 ```
 
-> 별도 Images API 요청이나 API-key 과금 경로는 없습니다. 다만 이미지 생성은 사용자의 포함된 ChatGPT/Codex 사용량과 한도를 소비합니다.
+> This project does not create separately billed Images API requests. Image generation still consumes the user's included ChatGPT/Codex usage and is subject to plan and workspace limits.
 
 ![GPT Image Skill smoke test](./generated-images/subscription-workflow-smoke.png)
 
-## 에이전트에 붙여넣어 설치하기
+## Install by pasting one prompt into an agent
 
-아래 블록을 Codex, Claude Code, 또는 로컬 코딩 에이전트에 **그대로 복사해 붙여넣으세요.**
+Copy the block below into Codex, Claude Code, or another local coding agent exactly as written:
 
 ```text
-다음 GitHub 저장소의 GPT Image Skill을 현재 사용자에게 설치하고 끝까지 검증해줘.
+Install and fully verify GPT Image Skill for the current user from this GitHub repository:
 
-저장소: https://github.com/GENEXIS-AI/gpt-image-skill
+https://github.com/GENEXIS-AI/gpt-image-skill
 
-이 요청은 이 작업에 한해 읽기 전용 환경 점검, 영구 사용자 경로로의 clone 또는 안전한 fast-forward update,
-Git·Node.js 22+ 지원 LTS·Codex CLI의 사용자 범위 설치, Codex와 Claude Code용 gpt-image 링크 생성,
-그리고 Sign in with ChatGPT 디바이스 로그인 시작을 승인한다.
+For this task, I authorize read-only environment checks; a persistent clone or safe fast-forward update;
+user-level installation of missing Git, a supported Node.js 22+ LTS, and Codex CLI;
+creation of the gpt-image links for Codex and Claude Code; and starting Sign in with ChatGPT device authorization.
 
-먼저 저장소 루트의 AGENT_INSTALL.md를 일회성 설치 계약으로 읽고 그대로 진행해줘.
-Images API, OPENAI_API_KEY, API-key 로그인은 사용하지 말고, 실제 이미지는 아직 생성하지 마.
-관리자 권한이 필요하거나, 관련 없는 기존 경로를 바꿔야 하거나, 로컬 변경을 버려야 하거나,
-기존 Codex 인증을 교체해야 하는 경우에만 멈추고 이유와 정확한 다음 행동을 알려줘.
-그 외에는 필요한 항목을 확인·설치하고 bootstrap --yes를 실행한 뒤,
-doctor의 best_practice_pass와 generation dry-run이 모두 통과할 때까지 안전하게 이어서 처리해줘.
-마지막에 영구 clone 경로, 두 스킬 설치 경로, ChatGPT 구독 인증 증거, dry-run 결과를 요약해줘.
+First read AGENT_INSTALL.md at the repository root as the one-time installation contract and follow it.
+Do not use the Images API, OPENAI_API_KEY, or API-key login. Do not generate a live image yet.
+Pause only if administrator privileges are required, an unrelated existing path would be changed,
+local changes would be discarded, or existing Codex authentication would need to be replaced.
+Otherwise, inspect and install the required components, run bootstrap --yes,
+and continue until doctor reports best_practice_pass=true and the generation dry-run succeeds.
+Finally, report the persistent clone path, both installed skill paths,
+the ChatGPT-subscription authentication evidence, and the dry-run result.
 ```
 
-이 프롬프트 자체가 제한된 설치 승인이므로, 에이전트가 Node.js나 Codex CLI가 없다는 이유만으로 다시 묻지 않아도 됩니다. 다음 경우에는 자동 변경하지 않고 멈추도록 설계했습니다.
+This prompt is deliberately scoped authorization. An agent does not need to ask again merely because Node.js or Codex CLI is missing. It must still stop before:
 
-- 관리자 권한이나 지원되지 않는 설치 경로가 필요한 경우
-- 기존의 관련 없는 파일·폴더·링크와 충돌하는 경우
-- 기존 API-key Codex 인증을 로그아웃하거나 교체해야 하는 경우
-- 실제 이미지 생성, GitHub Star, 다른 외부 작업이 필요한 경우
+- requesting administrator elevation or using an unsupported installer;
+- replacing an unrelated file, directory, or link;
+- discarding local repository changes;
+- logging out or replacing existing API-key authentication;
+- generating a live image, starring the repository, or performing another external action.
 
-설치 계약 원문은 [AGENT_INSTALL.md](./AGENT_INSTALL.md)입니다.
+The authoritative one-time bootstrap contract is [AGENT_INSTALL.md](./AGENT_INSTALL.md).
 
-## 왜 설치 후 매번 전체 문서를 읽지 않나요?
+## Why the agent does not reread the whole repository
 
-Skill은 점진적으로 로드됩니다.
+Agent Skills use progressive disclosure:
 
-1. 평소에는 짧은 이름과 설명만 에이전트의 발견 목록에 있습니다.
-2. 이미지 요청에 `gpt-image`가 선택될 때만 `SKILL.md` 본문을 읽습니다.
-3. OS 설치나 인증 문제가 있을 때만 해당 reference를 추가로 읽습니다.
+1. The host normally sees only the short skill name and description.
+2. It loads `SKILL.md` only when an image request selects `gpt-image`.
+3. It reads a platform or runtime reference only when that particular setup issue occurs.
 
-따라서 README와 `AGENT_INSTALL.md`는 최초 설치 때만 필요합니다. 이후에는 `$gpt-image` 또는 `/gpt-image`로 바로 호출하면 됩니다. 이 구조는 [OpenAI의 Skill 점진적 공개 원칙](https://learn.chatgpt.com/docs/build-skills)을 따릅니다.
+The README and `AGENT_INSTALL.md` are therefore needed for initial installation, not for every image request. After setup, invoke `$gpt-image` in Codex or `/gpt-image` in Claude Code. This follows [OpenAI's skill progressive-disclosure model](https://learn.chatgpt.com/docs/build-skills).
 
-## 핵심 기능
+## Features
 
-- ChatGPT 구독으로 로그인한 Codex의 내장 `$imagegen`만 사용
-- `OPENAI_API_KEY`와 OpenAI Images API를 코드 수준에서 차단
-- Codex와 Claude Code에 동일한 `gpt-image` 스킬 설치
-- 생성물은 호출한 에이전트의 현재 workspace 내부에만 저장
-- 여러 로컬 참조 이미지를 이용한 생성·편집
-- PNG/JPEG/WebP 시그니처, 파일 크기, SHA-256 검증
-- 절대 경로 Markdown으로 지원되는 채팅 UI에 즉시 표시
-- 기본적으로 덮어쓰지 않고 `-v2`, `-v3` 생성
-- macOS, Linux, Windows 네이티브, WSL2 진단 및 공식 Codex 설치 연결
-- `bootstrap` 한 번으로 링크, Codex, 로그인, doctor, 생성 경로 dry-run 연결
+- Uses Codex's built-in `$imagegen` under **Sign in with ChatGPT**
+- Blocks `OPENAI_API_KEY`, API-key login, and OpenAI Images API fallback
+- Installs the same `gpt-image` skill for Codex and Claude Code
+- Saves generated assets only inside the invoking agent's active workspace
+- Supports multiple local reference images for generation and editing
+- Validates PNG, JPEG, or WebP signatures, byte size, and SHA-256
+- Returns absolute Markdown paths for inline previews
+- Avoids overwriting by default and creates `-v2`, `-v3`, and later versions
+- Diagnoses macOS, Linux, native Windows, and WSL2
+- Connects skill links, Codex installation, login, doctor, and route dry-run through one `bootstrap` command
 
-## 작동 구조
+## How it works
 
 ```text
-Codex / Claude Code / local agent
+Codex / Claude Code / compatible local agent
         │
-        ├─ native image_gen이 있으면 바로 사용
+        ├─ use native image_gen when the host exposes it
         │
-        └─ 없으면 gpt-image bridge
-              ├─ OS / Node.js / Codex CLI 점검
-              ├─ Sign in with ChatGPT 확인
-              └─ API 관련 환경변수 제거
+        └─ otherwise use the gpt-image bridge
+              ├─ inspect OS / Node.js / Codex CLI
+              ├─ verify Sign in with ChatGPT
+              └─ remove API-related environment variables
                         │
                         ▼
              codex exec --ignore-user-config
@@ -86,35 +90,35 @@ Codex / Claude Code / local agent
                         ▼
        <workspace>/generated-images/*.png
                         │
-                        └─ raster 검증 + SHA-256 + Markdown
+                        └─ raster validation + SHA-256 + Markdown
 ```
 
-Codex SDK와 App Server도 Codex 스레드를 제어할 수 있지만, 이미지 한 장을 현재 프로젝트로 가져오는 이 용도에는 한 번의 `codex exec`가 가장 작은 실행 계층입니다.
+The Codex SDK and App Server can manage richer Codex threads, but one bounded `codex exec` turn is the smallest useful bridge for producing a single workspace asset.
 
-## 지원 환경
+## Supported environments
 
-| 환경 | 지원 | 설치 원칙 |
+| Environment | Status | Installation boundary |
 | --- | --- | --- |
-| macOS Apple Silicon / Intel | 지원 | macOS Node.js + 공식 Codex `install.sh` |
-| Linux x64 / arm64 | 지원 | Linux Node.js + 공식 Codex `install.sh` |
-| Windows 네이티브 | 지원 | Windows Node.js + 공식 Codex `install.ps1` + directory junction |
-| WSL2 | 지원 | Node, Codex, clone, skill을 모두 WSL2 안에 설치 |
-| WSL1 | 미지원 | WSL2로 전환하거나 Windows 네이티브 사용 |
+| macOS, Apple Silicon or Intel | Supported | macOS Node.js + official Codex `install.sh` |
+| Linux, x64 or arm64 | Supported | Linux Node.js + official Codex `install.sh` |
+| Native Windows | Supported | Windows Node.js + official Codex `install.ps1` + directory junctions |
+| WSL2 | Supported | Keep Node, Codex, clone, skill, workspace, and output inside WSL2 |
+| WSL1 | Unsupported | Migrate to WSL2 or use native Windows |
 
-브리지에는 다음이 필요합니다.
+The bridge requires:
 
-- Node.js 22 이상. [현재 지원 중인 Node.js LTS](https://nodejs.org/en/download)를 권장합니다.
-- GitHub URL clone을 위한 Git.
-- 이미지 생성이 가능한 ChatGPT/Codex 구독과 **Sign in with ChatGPT** 인증.
-- Claude Code에서 호출한다면 Claude Code 자체를 실행할 수 있는 별도 Claude 로그인 또는 권한.
+- Node.js 22 or newer; the [current supported Node.js LTS](https://nodejs.org/en/download) is recommended.
+- Git when installing from the GitHub URL.
+- A ChatGPT/Codex plan and workspace that permit image generation through **Sign in with ChatGPT**.
+- A separately usable Claude Code session if Claude Code is the calling host.
 
-Codex/ChatGPT 호스트가 `image_gen`을 직접 제공하면 Node.js와 중첩 Codex CLI를 설치하지 않고 네이티브 도구를 우선합니다.
+When the current Codex or ChatGPT host exposes `image_gen` directly, the skill uses that native route and does not install a nested Codex CLI.
 
-## 사람이 직접 설치하기
+## Manual installation
 
-링크가 clone을 계속 가리키므로 임시 폴더가 아닌 영구 사용자 경로를 사용하세요.
+Use a persistent user-owned clone. The installed links continue to point to that clone.
 
-### macOS, Linux, WSL2
+### macOS, Linux, and WSL2
 
 ```bash
 REPOSITORY_URL="https://github.com/GENEXIS-AI/gpt-image-skill"
@@ -126,9 +130,9 @@ node ./gpt-image/scripts/validate_skill.mjs
 node ./gpt-image/scripts/gpt_image.mjs bootstrap --target all --yes --json
 ```
 
-WSL2에서는 clone을 `/mnt/c`가 아닌 Linux 홈 아래에 두고 Windows Node/Codex와 섞지 마세요.
+On WSL2, keep the clone under the Linux home directory rather than `/mnt/c`, and do not mix Windows Node/Codex with the WSL toolchain.
 
-### Windows PowerShell
+### Native Windows PowerShell
 
 ```powershell
 $RepositoryUrl = "https://github.com/GENEXIS-AI/gpt-image-skill"
@@ -140,15 +144,15 @@ node .\gpt-image\scripts\validate_skill.mjs
 node .\gpt-image\scripts\gpt_image.mjs bootstrap --target all --yes --json
 ```
 
-설치 위치:
+Installed locations:
 
 - Codex: `~/.agents/skills/gpt-image`
 - Claude Code: `~/.claude/skills/gpt-image`
-- Windows: `$env:USERPROFILE\.agents\skills\gpt-image`, `$env:USERPROFILE\.claude\skills\gpt-image`
+- Native Windows: `$env:USERPROFILE\.agents\skills\gpt-image` and `$env:USERPROFILE\.claude\skills\gpt-image`
 
-macOS/Linux/WSL2에서는 심볼릭 링크, Windows에서는 directory junction을 만듭니다. 이전 이름 `gpt-image-workspace`의 링크는 이 저장소가 만든 링크라고 정확히 확인될 때만 제거됩니다. 일반 폴더나 다른 링크는 보존됩니다.
+macOS, Linux, and WSL2 use symlinks. Native Windows uses directory junctions. The installer removes a former `gpt-image-workspace` alias only when its target proves that this repository owns it; ordinary directories and unrelated links are preserved.
 
-### 단계별 명령
+### Granular setup commands
 
 ```bash
 node ./gpt-image/scripts/gpt_image.mjs install --target all --dry-run --json
@@ -159,11 +163,11 @@ node ./gpt-image/scripts/gpt_image.mjs login
 node ./gpt-image/scripts/gpt_image.mjs doctor --json
 ```
 
-`install-codex`는 macOS/Linux/WSL2에서 `https://chatgpt.com/codex/install.sh`, Windows에서 `https://chatgpt.com/codex/install.ps1`을 사용합니다. `verify-installers`는 실행 없이 허용된 HTTPS 리디렉션, 바이트 수, SHA-256을 확인합니다.
+`install-codex` uses `https://chatgpt.com/codex/install.sh` on macOS, Linux, and WSL2, and `https://chatgpt.com/codex/install.ps1` on native Windows. `verify-installers` checks the allowed HTTPS redirect, byte count, and SHA-256 without executing either installer.
 
-사용자는 브라우저/device authorization을 직접 완료해야 합니다. 설치기나 에이전트는 비밀번호, 토큰, API key, `~/.codex/auth.json`을 읽지 않습니다.
+The user completes browser or device authorization personally. The installer and agent must not request or read a password, token, API key, or `~/.codex/auth.json`.
 
-정상 완료 receipt의 핵심 값:
+A successful bootstrap receipt includes:
 
 ```json
 {
@@ -184,25 +188,25 @@ node ./gpt-image/scripts/gpt_image.mjs doctor --json
 }
 ```
 
-## 사용하기
+## Usage
 
 Codex:
 
 ```text
-$gpt-image 미색 배경 위에 파란 유리 재질의 작은 로봇을 만들어줘. 현재 프로젝트에 저장하고 보여줘.
+$gpt-image Create a small cobalt-blue glass robot on a warm off-white background. Save it in the current project and show it inline.
 ```
 
 Claude Code:
 
 ```text
-/gpt-image 미색 배경 위에 파란 유리 재질의 작은 로봇을 만들어줘. 현재 프로젝트에 저장하고 보여줘.
+/gpt-image Create a small cobalt-blue glass robot on a warm off-white background. Save it in the current project and show it inline.
 ```
 
-직접 실행:
+Direct runner:
 
 ```bash
 node ./gpt-image/scripts/gpt_image.mjs generate \
-  --prompt "미색 배경 중앙에 코발트 블루 카메라 조리개 심볼. 텍스트와 워터마크 없음." \
+  --prompt "A cobalt-blue camera aperture symbol centered on a warm off-white background. No text or watermark." \
   --out "generated-images/camera-aperture.png" \
   --size "square" \
   --quality "final" \
@@ -210,7 +214,7 @@ node ./gpt-image/scripts/gpt_image.mjs generate \
   --json
 ```
 
-실제 생성을 하지 않고 인증·경로·라우팅만 확인:
+Validate authentication, routing, and output paths without generating:
 
 ```bash
 node ./gpt-image/scripts/gpt_image.mjs generate \
@@ -220,37 +224,47 @@ node ./gpt-image/scripts/gpt_image.mjs generate \
   --json
 ```
 
-참조 이미지 편집:
+Edit with a reference image:
 
 ```bash
 node ./gpt-image/scripts/gpt_image.mjs generate \
-  --prompt "인물과 구도는 유지하고 배경만 따뜻한 노을로 바꿔줘." \
+  --prompt "Keep the person and composition unchanged; replace only the background with a warm sunset." \
   --reference "/absolute/path/reference.png" \
   --out "generated-images/sunset-edit.png" \
   --json
 ```
 
-## 구독 전용 안전장치
+## Subscription-only safeguards
 
-- `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`, `CODEX_ACCESS_TOKEN`을 자식 프로세스에 전달하지 않습니다.
-- redacted `codex login status`와 `codex doctor --json`에서 ChatGPT auth 증거를 확인합니다.
-- API-key 인증이 감지되거나 ChatGPT 인증을 확인할 수 없으면 생성 전에 중단합니다.
-- OpenAI Images API endpoint와 `/v1/images` 호출 코드가 없습니다.
-- 인증 파일을 읽지 않으며, 출력은 현재 workspace 내부로 제한합니다.
-- `--overwrite` 없이는 기존 파일을 교체하지 않습니다.
+- Removes `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`, and `CODEX_ACCESS_TOKEN` from every Codex child process.
+- Checks redacted `codex login status` and `codex doctor --json` output for explicit ChatGPT-auth evidence.
+- Stops before generation when API-key authentication is detected or ChatGPT authentication cannot be verified.
+- Contains no OpenAI Images API endpoint or `/v1/images` request.
+- Never reads authentication files and constrains output to the active workspace.
+- Never replaces an existing output without `--overwrite`.
 
-## Skill best-practice 체크
+## Security and privacy
 
-- [x] 한 가지 일: 구독 기반 GPT 이미지 생성·저장·표시
-- [x] 이름과 description만 상시 발견, 본문과 reference는 필요할 때만 로드
-- [x] 설치·인증·경로·파일 검증처럼 결정론이 필요한 부분만 스크립트화
-- [x] Node.js 22+, Windows/WSL2 경계, 영구 clone, 비파괴 링크 설치
-- [x] `doctor --json`의 `best_practice_pass`, `next_action`으로 기계 판독
-- [x] 첫 실제 생성 전 generation dry-run
-- [x] Ubuntu/macOS/Windows × Node 22/24 CI
-- [x] Star는 만족 후 선택적으로 요청하며 자동 실행 금지
+- No credential, token, personal filesystem path, or private email address is required in this repository.
+- Authentication stays in the user's local Codex installation; the skill never reads `~/.codex/auth.json`.
+- Diagnostic and bridge output is sanitized before it can be returned.
+- Official installer redirects are restricted to `chatgpt.com` and `releases.openai.com`.
+- GitHub Actions uses read-only repository permissions and pinned action commit SHAs.
 
-배포 전 검증:
+Before publishing a fork, scan the full Git history rather than only the working tree. Never commit Codex authentication files, shell profiles, `.env` files, API keys, or generated diagnostics containing account data.
+
+## Skill best-practice checks
+
+- [x] One focused job: subscription-backed GPT image generation, workspace save, and inline preview
+- [x] Only name and description are always discoverable; body and references load on demand
+- [x] Scripts are limited to deterministic installation, authentication, path, and file-validation behavior
+- [x] Node.js 22+, native Windows/WSL2 boundaries, persistent clone, and non-destructive host links
+- [x] Machine-readable `best_practice_pass` and `next_action` fields from `doctor --json`
+- [x] Generation dry-run before the first live bridge request
+- [x] Ubuntu, macOS, and Windows CI on Node.js 22 and 24
+- [x] A GitHub Star is an opt-in request after success and is never automatic
+
+Release validation:
 
 ```bash
 node --check ./gpt-image/scripts/gpt_image.mjs
@@ -260,18 +274,18 @@ node ./gpt-image/scripts/gpt_image.mjs doctor --json
 node ./gpt-image/scripts/gpt_image.mjs generate --prompt "release route check" --out "generated-images/release-check.png" --dry-run --json
 ```
 
-GitHub Actions는 Ubuntu, macOS, Windows에서 Node 22/24로 문법·validator·실제 링크 설치를 검사합니다. CI에는 사용자 인증이 없으므로 로그인과 실제 이미지 생성은 실행하지 않습니다.
+GitHub Actions validates syntax, the repository validator, and real host-link installation on Ubuntu, macOS, and Windows with Node.js 22 and 24. CI has no user authentication, so it does not log in or generate a live image.
 
-## 문제 해결
+## Troubleshooting
 
-- `node_supported=false`: [플랫폼 설정 가이드](./gpt-image/references/platform-setup.md)에서 OS별 Node.js 22+ 설치 후 새 shell을 여세요.
-- `codex_available=false`: 같은 shell에서 `codex --version`을 확인하고, 설치 직후라면 terminal/agent를 재시작하세요.
-- WSL 오류: WSL1은 지원하지 않습니다. WSL2에서는 모든 런타임과 clone을 Linux 쪽에 두세요.
-- `chatgpt_subscription_login=false`: `node ./gpt-image/scripts/gpt_image.mjs login` 후 doctor를 다시 실행하세요.
-- API-key auth 감지: 자동 로그아웃하지 않습니다. 인증 교체 여부를 사용자가 별도로 결정해야 합니다.
-- 새 skill이 보이지 않음: Codex 또는 Claude Code에서 새 세션을 시작하세요.
+- `node_supported=false`: follow the OS-specific Node.js 22+ instructions in [Cross-platform setup](./gpt-image/references/platform-setup.md), then open a new shell.
+- `codex_available=false`: run `codex --version` in the same shell; restart the terminal or agent after a new installation.
+- WSL failure: WSL1 is unsupported. Keep all runtimes and the clone on the Linux side of WSL2.
+- `chatgpt_subscription_login=false`: run `node ./gpt-image/scripts/gpt_image.mjs login`, then rerun doctor.
+- API-key auth detected: the runner will not log out automatically. The user must separately decide whether to replace that authentication.
+- Skill not visible: start a new Codex or Claude Code session.
 
-## 업데이트
+## Update
 
 ```bash
 INSTALL_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/gpt-image-skill"
@@ -279,7 +293,7 @@ git -C "$INSTALL_DIR" pull --ff-only
 node "$INSTALL_DIR/gpt-image/scripts/gpt_image.mjs" bootstrap --target all --yes --json
 ```
 
-Windows PowerShell:
+Native Windows PowerShell:
 
 ```powershell
 $InstallDir = Join-Path $env:LOCALAPPDATA "gpt-image-skill"
@@ -287,7 +301,7 @@ git -C $InstallDir pull --ff-only
 node "$InstallDir\gpt-image\scripts\gpt_image.mjs" bootstrap --target all --yes --json
 ```
 
-## 프로젝트 구조
+## Project structure
 
 ```text
 .
@@ -306,18 +320,18 @@ node "$InstallDir\gpt-image\scripts\gpt_image.mjs" bootstrap --target all --yes 
         └── validate_skill.mjs
 ```
 
-관련 문서:
+Related documentation:
 
-- [일회성 에이전트 설치 계약](./AGENT_INSTALL.md)
-- [스킬 실행 계약](./gpt-image/SKILL.md)
-- [구독 런타임과 인증 경계](./gpt-image/references/subscription-runtime.md)
-- [macOS·Linux·Windows·WSL2 설정](./gpt-image/references/platform-setup.md)
-- [OpenAI Skill 작성 가이드](https://learn.chatgpt.com/docs/build-skills)
-- [Codex 이미지 생성](https://learn.chatgpt.com/docs/image-generation)
+- [One-time agent installation contract](./AGENT_INSTALL.md)
+- [Skill execution contract](./gpt-image/SKILL.md)
+- [Subscription runtime and authentication boundary](./gpt-image/references/subscription-runtime.md)
+- [macOS, Linux, Windows, and WSL2 setup](./gpt-image/references/platform-setup.md)
+- [OpenAI: Build skills](https://learn.chatgpt.com/docs/build-skills)
+- [Codex image generation](https://learn.chatgpt.com/docs/image-generation)
 - [Codex CLI](https://learn.chatgpt.com/docs/codex/cli)
-- [Codex 인증](https://learn.chatgpt.com/docs/auth)
-- [Claude Code Skills](https://code.claude.com/docs/en/slash-commands)
+- [Codex authentication](https://learn.chatgpt.com/docs/auth)
+- [Claude Code skills](https://code.claude.com/docs/en/slash-commands)
 
 ---
 
-설치나 첫 이미지 결과가 만족스러우셨다면 이 저장소에 ⭐ Star를 남겨주셔도 좋습니다. 실제 사용자 피드백과 Star는 유지보수와 다음 개선에 큰 도움이 됩니다.
+If the installation or your first image works well, please consider leaving the repository a ⭐ Star. Real user feedback and Stars help guide maintenance and future improvements.
