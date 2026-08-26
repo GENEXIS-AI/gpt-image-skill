@@ -36,6 +36,14 @@ jobs:
           node gpt-image/scripts/validate_skill.mjs
           node gpt-image/scripts/gpt_image.mjs help
 
+      - name: Check image capability and reference contracts
+        run: |
+          node gpt-image/scripts/gpt_image.mjs capabilities --json
+          node gpt-image/scripts/gpt_image.mjs inspect --input generated-images/subscription-workflow-smoke.png --json
+          node gpt-image/scripts/gpt_image.mjs plan --mode generate --prompt "Use Image 1 for content and Image 2 for style." --reference generated-images/subscription-workflow-smoke.png --reference-role "content reference" --reference generated-images/subscription-workflow-smoke.png --reference-role "style reference" --avoid "watermark" --exact-text "GPT IMAGE" --out generated-images/ci-reference-plan.png --json
+          node gpt-image/scripts/gpt_image.mjs plan --mode edit --prompt "Replace only the center symbol." --edit-target generated-images/subscription-workflow-smoke.png --region "center symbol only" --preserve "background, lighting, crop, and every other detail" --out generated-images/ci-edit-plan.png --json
+          node gpt-image/scripts/gpt_image.mjs plan --mode variation --prompt "Create a warmer variation." --edit-target generated-images/subscription-workflow-smoke.png --preserve "subject identity and composition" --background transparent --out generated-images/ci-variation-plan.png --json
+
       - name: Check non-destructive host installation
         run: |
           node gpt-image/scripts/gpt_image.mjs install --target all --dry-run --json

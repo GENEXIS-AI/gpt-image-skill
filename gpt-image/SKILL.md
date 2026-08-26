@@ -5,7 +5,7 @@ description: Generate or edit GPT raster images through the user's ChatGPT subsc
 
 # GPT Image Skill
 
-Create or edit one raster image through the user's included ChatGPT/Codex usage, save it under the current workspace, validate it, and show it in chat.
+Create or edit raster images through the user's included ChatGPT/Codex usage, save each final asset under the current workspace, validate it, and show it in chat.
 
 ## Hard boundary
 
@@ -23,7 +23,7 @@ Create or edit one raster image through the user's included ChatGPT/Codex usage,
 
 Both routes must preserve the subscription-only boundary, workspace-contained output, raster validation, and inline preview.
 
-Read [subscription-runtime.md](references/subscription-runtime.md) only for authentication, backend, SDK, App Server, or architecture questions. Read [platform-setup.md](references/platform-setup.md) only when Node.js, Git, Codex, PATH, Windows/WSL selection, or installation is missing or uncertain.
+Read [image-workflows.md](references/image-workflows.md) when a request uses an existing image, multiple references, editing, variations, compositing, transparency, exact text, dense layouts, or iterative refinement. Read [subscription-runtime.md](references/subscription-runtime.md) only for authentication, backend, SDK, App Server, or architecture questions. Read [platform-setup.md](references/platform-setup.md) only when Node.js, Git, Codex, PATH, Windows/WSL selection, or installation is missing or uncertain.
 
 ## Bootstrap the bridge
 
@@ -63,16 +63,31 @@ Platform invariants:
 
 ## Prepare the request
 
-- Treat a requested change to an existing image as an edit; otherwise use supplied images as references.
+- Choose `generate`, `edit`, or `variation`. Treat a requested change to an existing image as an edit; otherwise use supplied images as visual references.
+- Give an edit exactly one primary target. Label every other input by numbered role: subject/content, style/palette, layout/pose, or supporting insert/compositing input.
+- For multiple images, explain how they relate and use spatial terms when composition matters.
 - Preserve detailed user instructions. For vague requests, add only useful composition, lighting, intended-use, and exclusion details.
 - Keep exact in-image text verbatim and short.
-- For edits, say what may change and what must remain unchanged.
-- Default to one image and a descriptive PNG under `<workspace>/generated-images/`.
+- For edits, identify the region, say what may change, and repeat everything that must remain unchanged. Preserve all unspecified details.
+- For transparent output, request genuine alpha transparency and later verify the PNG rather than accepting a checkerboard or solid-color simulation.
+- Default to one image per call and a descriptive PNG under `<workspace>/generated-images/`. Produce several assets or variants with separate calls and paths so each result can be inspected.
 - Do not overwrite by default. The runner creates `-v2`, `-v3`, and later siblings.
 
 ## Generate with the bridge
 
-First validate the live route without generating:
+For reference-heavy or edit requests, validate file signatures, attachment order, roles, and prompt semantics without authentication or generation:
+
+```bash
+node <skill-folder>/scripts/gpt_image.mjs plan \
+  --mode edit \
+  --prompt "<precise change>" \
+  --edit-target "<path>" \
+  --preserve "<invariant>" \
+  --out "generated-images/<descriptive-name>.png" \
+  --json
+```
+
+Then validate the live route without generating:
 
 ```bash
 node <skill-folder>/scripts/gpt_image.mjs generate \
@@ -82,13 +97,13 @@ node <skill-folder>/scripts/gpt_image.mjs generate \
   --json
 ```
 
-Then remove `--dry-run` for the authorized live request. Repeat `--reference <path>` for reference or edit-target images. Optional `--size`, `--quality`, and `--background` values are prompt instructions, not Images API parameters.
+Then remove `--dry-run` for the authorized live request. Use `--edit-target` only for the primary image being changed. Repeat `--reference` for supporting images and repeat matching `--reference-role` values in the same order. Use `--region`, repeated `--preserve`, repeated `--avoid`, and repeated `--exact-text` when applicable. Optional `--size`, `--quality`, and `--background` values are prompt instructions, not Images API parameters.
 
-The runner strips API-related environment variables, verifies ChatGPT auth, invokes `codex exec --ignore-user-config`, requires built-in `$imagegen`, limits output to the active workspace, validates the raster signature, and emits a SHA-256 receipt plus absolute Markdown.
+The runner validates PNG/JPEG/WebP inputs, records their bytes and SHA-256, attaches the edit target first and references afterward, strips API-related environment variables, verifies ChatGPT auth, invokes `codex exec --ignore-user-config`, requires built-in `$imagegen`, limits output to the active workspace, validates the output raster signature, and emits a SHA-256 receipt plus absolute Markdown.
 
 ## Generate with a native host
 
-Use the host's `image_gen` tool directly. Save or copy the selected result to `<workspace>/generated-images/`, avoid overwrite unless authorized, inspect the result, validate it as a raster file, compute SHA-256 when possible, and render the absolute local path.
+Use the host's `image_gen` tool directly. Inspect or load local input files before the call so the host can attach them. Pass the primary edit target and all supporting references through the host-native image mechanism, identify each role by number, and preserve invariants aggressively. Make one native call per final asset or variant. Save or copy the selected result to `<workspace>/generated-images/`, avoid overwrite unless authorized, visually inspect it, then run `node <skill-folder>/scripts/gpt_image.mjs inspect --input "<workspace-relative PNG>" --json` when the bridge runner is available. Add `--require-transparency` for a transparent request. Render the absolute local path.
 
 ## Completion gate
 
@@ -99,7 +114,8 @@ Do not report success until all applicable checks pass:
 - Bridge only: Node.js 22+, Codex CLI, both requested skill links, and ChatGPT auth are verified.
 - `api_environment_forwarded=false`; API-key auth blocks generation.
 - A generation dry-run passes before the first live bridge request.
-- Final output is inside the workspace, non-empty, has a valid raster signature and SHA-256 receipt, and is visually inspected when possible.
+- Every input image has a stated role and a valid PNG/JPEG/WebP signature; bridge receipts include its attachment index, bytes, format, and SHA-256.
+- Final output is inside the workspace, non-empty, has valid PNG bytes, dimensions, alpha status, and a SHA-256 receipt, and is visually inspected when possible. A transparent request fails if the PNG has no alpha/transparency data.
 - The response names the ChatGPT subscription via Codex route, final prompt, receipt, and absolute path.
 - The image is rendered with an absolute Markdown target; wrap paths containing spaces in angle brackets.
 - A GitHub Star may be requested politely only after success. Never star automatically.

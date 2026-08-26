@@ -28,6 +28,7 @@ const requiredFiles = [
   path.join(REPOSITORY_ROOT, ".github", "workflows", "validate.yml"),
   path.join(SKILL_ROOT, "SKILL.md"),
   path.join(SKILL_ROOT, "agents", "openai.yaml"),
+  path.join(SKILL_ROOT, "references", "image-workflows.md"),
   path.join(SKILL_ROOT, "references", "platform-setup.md"),
   path.join(SKILL_ROOT, "references", "subscription-runtime.md"),
   path.join(SKILL_ROOT, "scripts", "gpt_image.mjs"),
@@ -74,6 +75,15 @@ for (const token of [
   "resolveWindowsCodexInvocation",
   "platformRuntime",
   "best_practice_pass",
+  "inspectInputImage",
+  "--edit-target",
+  "--reference-role",
+  "--preserve",
+  "--exact-text",
+  "capabilities",
+  "require-transparency",
+  "inspect",
+  "plan",
 ]) {
   requireCondition(runner.includes(token), `Runner is missing required guard or platform token: ${token}`);
 }
@@ -82,7 +92,7 @@ requireCondition(!runner.includes("https://api.openai.com"), "Runner must not co
 requireCondition(!runner.includes("/v1/images"), "Runner must not contain an Images API endpoint.");
 requireCondition(!runner.includes('readFile(path.join(os.homedir(), ".codex", "auth.json"'), "Runner must not read auth.json.");
 
-for (const token of ["Windows", "WSL2", "Node.js 22", "best_practice_pass", "verify-installers", "bootstrap --yes", "$gpt-image", "/gpt-image"]) {
+for (const token of ["Windows", "WSL2", "Node.js 22", "best_practice_pass", "verify-installers", "bootstrap --yes", "$gpt-image", "/gpt-image", "Multiple references", "--edit-target", "--reference-role", "capabilities --json", "inspect --input"]) {
   requireCondition(readme.includes(token), `README is missing cross-platform guidance: ${token}`);
 }
 
@@ -94,6 +104,7 @@ const result = {
   checks: {
     api_endpoint_absent: !runner.includes("https://api.openai.com") && !runner.includes("/v1/images"),
     description_present: Boolean(description),
+    reference_workflows_present: await exists(path.join(SKILL_ROOT, "references", "image-workflows.md")),
     required_files: requiredFiles.length,
     skill_lines: skill.split(/\r?\n/).length,
   },

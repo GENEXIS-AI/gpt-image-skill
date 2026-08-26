@@ -13,6 +13,10 @@ install skill → inspect environment → Sign in with ChatGPT → $imagegen
 
 ![GPT Image Skill smoke test](./generated-images/subscription-workflow-smoke.png)
 
+The reference-edit smoke test below used the first image as the primary edit target, changed only its center symbol, and preserved the surrounding aperture, background, dimensions, and crop through the subscription-backed Codex CLI bridge.
+
+![GPT Image Skill reference edit smoke test](./generated-images/reference-edit-smoke.png)
+
 ## Install by pasting one prompt into an agent
 
 Copy the block below into Codex, Claude Code, or another local coding agent exactly as written:
@@ -52,7 +56,7 @@ Agent Skills use progressive disclosure:
 
 1. The host normally sees only the short skill name and description.
 2. It loads `SKILL.md` only when an image request selects `gpt-image`.
-3. It reads a platform or runtime reference only when that particular setup issue occurs.
+3. It reads a task-specific workflow, platform, or runtime reference only when that issue occurs.
 
 The README and `AGENT_INSTALL.md` are therefore needed for initial installation, not for every image request. After setup, invoke `$gpt-image` in Codex or `/gpt-image` in Claude Code. This follows [OpenAI's skill progressive-disclosure model](https://learn.chatgpt.com/docs/build-skills).
 
@@ -62,12 +66,33 @@ The README and `AGENT_INSTALL.md` are therefore needed for initial installation,
 - Blocks `OPENAI_API_KEY`, API-key login, and OpenAI Images API fallback
 - Installs the same `gpt-image` skill for Codex and Claude Code
 - Saves generated assets only inside the invoking agent's active workspace
-- Supports multiple local reference images for generation and editing
-- Validates PNG, JPEG, or WebP signatures, byte size, and SHA-256
+- Separates one primary edit target from ordered, role-labeled supporting references
+- Supports single and multiple reference images, localized edits, variations, compositing, iterative refinement, transparency, exact text, and dense-layout drafts
+- Provides an auth-free `plan` command and a machine-readable `capabilities` report
+- Validates every input image's PNG/JPEG/WebP signature, byte size, and SHA-256 before attachment
+- Validates final PNG signature, dimensions, alpha status, byte size, and SHA-256
 - Returns absolute Markdown paths for inline previews
 - Avoids overwriting by default and creates `-v2`, `-v3`, and later versions
 - Diagnoses macOS, Linux, native Windows, and WSL2
 - Connects skill links, Codex installation, login, doctor, and route dry-run through one `bootstrap` command
+
+## Supported image workflows
+
+| Workflow | Native host | Codex subscription bridge |
+| --- | --- | --- |
+| Text-to-image | Built-in `image_gen` | `--mode generate` |
+| One visual reference | Attach and name its role | `--reference` + `--reference-role` |
+| Multiple references | Number content/style/layout inputs | Repeat both reference flags in matching order |
+| Existing-image edit | Mark one primary target and list invariants | `--mode edit --edit-target` |
+| Localized change | Describe the spatial area and preserved surroundings | `--region` + repeated `--preserve` |
+| Style transfer / compositing | Assign a role to every input | Edit target first, then ordered role-labeled references |
+| Variation | Reuse the selected source and preserve identity/layout | `--mode variation --edit-target` |
+| Iterative revision | Make one targeted change and reuse the selected output | Use the previous output as the next edit target |
+| Transparent cutout | Request actual alpha and inspect it | `--background transparent` |
+| Exact text / infographic | Quote short text and inspect every word | Repeat `--exact-text`; put layout and typography in the prompt |
+| Several assets or variants | One native call per final image | One bridge invocation and output path per final image |
+
+This covers the practical generation and editing workflows exposed by Codex's built-in image generator while keeping the subscription-only boundary. Interactive Canvas area selection and conversation multi-select are host UI gestures; a CLI-only session expresses the same intent with a spatial `--region`, numbered files, and explicit preservation rules. API-only parameters and separately billed Images API fallbacks are intentionally not part of this project.
 
 ## How it works
 
@@ -79,6 +104,7 @@ Codex / Claude Code / compatible local agent
         └─ otherwise use the gpt-image bridge
               ├─ inspect OS / Node.js / Codex CLI
               ├─ verify Sign in with ChatGPT
+              ├─ validate and role-label local image inputs
               └─ remove API-related environment variables
                         │
                         ▼
@@ -224,15 +250,76 @@ node ./gpt-image/scripts/gpt_image.mjs generate \
   --json
 ```
 
-Edit with a reference image:
+Inspect the full capability contract:
+
+```bash
+node ./gpt-image/scripts/gpt_image.mjs capabilities --json
+```
+
+Inspect a workspace PNG produced by a native host or the bridge:
+
+```bash
+node ./gpt-image/scripts/gpt_image.mjs inspect \
+  --input "generated-images/product-hero.png" \
+  --json
+```
+
+Add `--require-transparency` for a transparent asset; validation fails when the PNG has no alpha channel or transparency chunk.
+
+Validate a reference or edit plan without authentication or image-generation usage:
+
+```bash
+node ./gpt-image/scripts/gpt_image.mjs plan \
+  --mode edit \
+  --prompt "Replace only the mug with a small potted plant." \
+  --edit-target "/absolute/path/product-photo.png" \
+  --region "the mug on the left side of the desk" \
+  --preserve "person, desk layout, lighting, colors, crop, and every other detail" \
+  --avoid "text, logos, and watermarks" \
+  --out "generated-images/plant-edit.png" \
+  --json
+```
+
+Edit one primary image:
 
 ```bash
 node ./gpt-image/scripts/gpt_image.mjs generate \
+  --mode edit \
   --prompt "Keep the person and composition unchanged; replace only the background with a warm sunset." \
-  --reference "/absolute/path/reference.png" \
+  --edit-target "/absolute/path/reference.png" \
+  --preserve "person, pose, composition, crop, lighting direction, and foreground" \
   --out "generated-images/sunset-edit.png" \
   --json
 ```
+
+Generate from multiple role-labeled references:
+
+```bash
+node ./gpt-image/scripts/gpt_image.mjs generate \
+  --mode generate \
+  --prompt "Create a landing-page hero. Use Image 1 for the product and Image 2 only for line work, palette, and shadows. Leave the upper-right clear for copy." \
+  --reference "/absolute/path/product.png" \
+  --reference-role "product identity and camera-angle reference" \
+  --reference "/absolute/path/style.png" \
+  --reference-role "line work, palette, and shadow reference" \
+  --avoid "logos, text, and watermarks" \
+  --out "generated-images/product-hero.png" \
+  --json
+```
+
+Create a variation, then use its output as the next edit target for another targeted revision:
+
+```bash
+node ./gpt-image/scripts/gpt_image.mjs generate \
+  --mode variation \
+  --prompt "Create a warmer evening variation with softer shadows." \
+  --edit-target "generated-images/product-hero.png" \
+  --preserve "product identity, camera angle, layout, and crop" \
+  --out "generated-images/product-hero-evening.png" \
+  --json
+```
+
+The runner attaches the edit target as Image 1, then supporting references in command-line order. Every JSON receipt records each input's attachment index, role, detected format, byte size, and SHA-256.
 
 ## Subscription-only safeguards
 
@@ -257,10 +344,13 @@ Before publishing a fork, scan the full Git history rather than only the working
 
 - [x] One focused job: subscription-backed GPT image generation, workspace save, and inline preview
 - [x] Only name and description are always discoverable; body and references load on demand
-- [x] Scripts are limited to deterministic installation, authentication, path, and file-validation behavior
+- [x] Scripts are limited to deterministic installation, authentication, request planning, path, and file-validation behavior
 - [x] Node.js 22+, native Windows/WSL2 boundaries, persistent clone, and non-destructive host links
 - [x] Machine-readable `best_practice_pass` and `next_action` fields from `doctor --json`
 - [x] Generation dry-run before the first live bridge request
+- [x] Auth-free plan validation for generate, edit, variation, and ordered multi-reference requests
+- [x] Explicit input roles plus PNG/JPEG/WebP signature, byte-size, and SHA-256 validation
+- [x] One inspected output per call for safer iterative edits and variants
 - [x] Ubuntu, macOS, and Windows CI on Node.js 22 and 24
 - [x] A GitHub Star is an opt-in request after success and is never automatic
 
@@ -269,8 +359,11 @@ Release validation:
 ```bash
 node --check ./gpt-image/scripts/gpt_image.mjs
 node ./gpt-image/scripts/validate_skill.mjs
+node ./gpt-image/scripts/gpt_image.mjs capabilities --json
+node ./gpt-image/scripts/gpt_image.mjs inspect --input "generated-images/subscription-workflow-smoke.png" --json
 node ./gpt-image/scripts/gpt_image.mjs install --target all --dry-run --json
 node ./gpt-image/scripts/gpt_image.mjs doctor --json
+node ./gpt-image/scripts/gpt_image.mjs plan --mode edit --prompt "release reference check" --edit-target "generated-images/subscription-workflow-smoke.png" --preserve "all unspecified details" --out "generated-images/release-edit-check.png" --json
 node ./gpt-image/scripts/gpt_image.mjs generate --prompt "release route check" --out "generated-images/release-check.png" --dry-run --json
 ```
 
@@ -308,11 +401,13 @@ node "$InstallDir\gpt-image\scripts\gpt_image.mjs" bootstrap --target all --yes 
 ├── AGENT_INSTALL.md
 ├── README.md
 ├── .github/workflows/validate.yml
+├── generated-images/reference-edit-smoke.png
 ├── generated-images/subscription-workflow-smoke.png
 └── gpt-image/
     ├── SKILL.md
     ├── agents/openai.yaml
     ├── references/
+    │   ├── image-workflows.md
     │   ├── platform-setup.md
     │   └── subscription-runtime.md
     └── scripts/
@@ -325,6 +420,7 @@ Related documentation:
 - [One-time agent installation contract](./AGENT_INSTALL.md)
 - [Skill execution contract](./gpt-image/SKILL.md)
 - [Subscription runtime and authentication boundary](./gpt-image/references/subscription-runtime.md)
+- [Reference images, edits, variations, and iterative workflows](./gpt-image/references/image-workflows.md)
 - [macOS, Linux, Windows, and WSL2 setup](./gpt-image/references/platform-setup.md)
 - [OpenAI: Build skills](https://learn.chatgpt.com/docs/build-skills)
 - [Codex image generation](https://learn.chatgpt.com/docs/image-generation)
