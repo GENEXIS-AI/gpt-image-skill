@@ -2,27 +2,25 @@
 
 [![Validate skill](https://github.com/GENEXIS-AI/gpt-image-skill/actions/workflows/validate.yml/badge.svg)](https://github.com/GENEXIS-AI/gpt-image-skill/actions/workflows/validate.yml)
 
-Generate or edit GPT images from Codex, Claude Code, or another compatible local agent using the user's **ChatGPT subscription**—without calling the OpenAI Images API. The skill saves the result inside the active project, validates it, and returns an absolute Markdown path so supported chat clients can display it inline.
+Generate and edit GPT images from Codex, Claude Code, or another compatible local agent through the user's **ChatGPT subscription**. The skill keeps the original image prompt unchanged, passes real reference files into generation, saves the result in the active project, and shows it inline.
 
 ```text
-install skill → inspect environment → Sign in with ChatGPT → $imagegen
-              → <active project>/generated-images/*.png → inline preview
+install skill → Sign in with ChatGPT → exact user prompt + local image inputs
+              → built-in $imagegen → <project>/generated-images/*.png
 ```
 
-> This project does not create separately billed Images API requests. Image generation still consumes the user's included ChatGPT/Codex usage and is subject to plan and workspace limits.
+> This repository does not call the OpenAI Images API and does not create a separately billed Images API request. Image generation still consumes included ChatGPT/Codex usage and remains subject to plan and workspace limits.
 
 ![GPT Image Skill smoke test](./generated-images/subscription-workflow-smoke.png)
-
-The reference-edit smoke test below used the first image as the primary edit target, changed only its center symbol, and preserved the surrounding aperture, background, dimensions, and crop through the subscription-backed Codex CLI bridge.
 
 ![GPT Image Skill reference edit smoke test](./generated-images/reference-edit-smoke.png)
 
 ## Install by pasting one prompt into an agent
 
-Copy the block below into Codex, Claude Code, or another local coding agent exactly as written:
+Paste this into Codex, Claude Code, or another local coding agent:
 
 ```text
-Install and fully verify GPT Image Skill for the current user from this GitHub repository:
+Install and verify GPT Image Skill for the current user from:
 
 https://github.com/GENEXIS-AI/gpt-image-skill
 
@@ -30,119 +28,96 @@ For this task, I authorize read-only environment checks; a persistent clone or s
 user-level installation of missing Git, a supported Node.js 22+ LTS, and Codex CLI;
 creation of the gpt-image links for Codex and Claude Code; and starting Sign in with ChatGPT device authorization.
 
-First read AGENT_INSTALL.md at the repository root as the one-time installation contract and follow it.
+Read AGENT_INSTALL.md at the repository root and follow it as the one-time installation contract.
 Do not use the Images API, OPENAI_API_KEY, or API-key login. Do not generate a live image yet.
 Pause only if administrator privileges are required, an unrelated existing path would be changed,
 local changes would be discarded, or existing Codex authentication would need to be replaced.
-Otherwise, inspect and install the required components, run bootstrap --yes,
-and continue until doctor reports best_practice_pass=true and the generation dry-run succeeds.
-Finally, report the persistent clone path, both installed skill paths,
-the ChatGPT-subscription authentication evidence, and the dry-run result.
+Otherwise, install the required components, run bootstrap --target all --yes --json,
+and continue until doctor reports best_practice_pass=true.
+Finally, report the persistent clone path, both installed skill paths, and ChatGPT-auth evidence.
 ```
 
-This prompt is deliberately scoped authorization. An agent does not need to ask again merely because Node.js or Codex CLI is missing. It must still stop before:
+This prompt authorizes ordinary user-level setup without authorizing administrator elevation, destructive changes, replacement of existing authentication, a live generation, or a GitHub Star. The full boundary is in [AGENT_INSTALL.md](./AGENT_INSTALL.md).
 
-- requesting administrator elevation or using an unsupported installer;
-- replacing an unrelated file, directory, or link;
-- discarding local repository changes;
-- logging out or replacing existing API-key authentication;
-- generating a live image, starring the repository, or performing another external action.
+After setup, invoke `$gpt-image` in Codex or `/gpt-image` in Claude Code. The host loads the concise skill only for image tasks; it does not need to reread this README on every request.
 
-The authoritative one-time bootstrap contract is [AGENT_INSTALL.md](./AGENT_INSTALL.md).
+## Design principles
 
-## Why the agent does not reread the whole repository
+### 1. The prompt is authoritative
 
-Agent Skills use progressive disclosure:
+The skill forwards the user's image request unchanged. It does not “improve” a short prompt by adding composition, lighting, visual style, colors, objects, materials, negative prompts, or preservation rules. Optional runner flags are included only when the user explicitly supplied those constraints.
 
-1. The host normally sees only the short skill name and description.
-2. It loads `SKILL.md` only when an image request selects `gpt-image`.
-3. It reads a task-specific workflow, platform, or runtime reference only when that issue occurs.
+### 2. References are files, not descriptions
 
-The README and `AGENT_INSTALL.md` are therefore needed for initial installation, not for every image request. After setup, invoke `$gpt-image` in Codex or `/gpt-image` in Claude Code. This follows [OpenAI's skill progressive-disclosure model](https://learn.chatgpt.com/docs/build-skills).
+The bridge requires a readable local PNG, JPEG, or WebP path for each reference. It passes those files into the actual `$imagegen` call. It never replaces an unresolved reference with a text description and continues anyway.
+
+In Claude Code:
+
+- Prefer `@path/to/image.png` or an explicit filesystem path.
+- A pasted or dragged image visible in Claude is not automatically inherited by a nested `codex exec` process.
+- If Claude exposes an exact readable temporary attachment path, the agent copies that exact file into `<project>/generated-images/inputs/` and uses the copy.
+- If Claude exposes no path, save the image inside the project and provide that path before generation.
+- The skill does not guess from `~/.claude/image-cache`; choosing “the newest image” could select the wrong or private file.
+
+### 3. Revisions always edit the latest result
+
+Each bridge invocation is ephemeral. For “change the result you just made,” the agent must use the previous generated output as the next `--edit-target` and reattach every still-needed reference. Reusing the original source is a different operation and loses the prior edit.
+
+### 4. Normal generation stays light
+
+The default path is:
+
+```text
+quick ChatGPT-auth check → one generation → minimal PNG sanity check → PATH + inline Markdown
+```
+
+`plan`, `--dry-run`, `capabilities --json`, `inspect --input`, and detailed JSON remain available for troubleshooting. They are not required before a normal image request.
 
 ## Features
 
 - Uses Codex's built-in `$imagegen` under **Sign in with ChatGPT**
-- Blocks `OPENAI_API_KEY`, API-key login, and OpenAI Images API fallback
+- Uses a host-native `image_gen` tool directly when the calling host already exposes one
+- Blocks `OPENAI_API_KEY`, API-key Codex login, and Images API fallback
 - Installs the same `gpt-image` skill for Codex and Claude Code
-- Saves generated assets only inside the invoking agent's active workspace
-- Separates one primary edit target from ordered, role-labeled supporting references
-- Supports single and multiple reference images, localized edits, variations, compositing, iterative refinement, transparency, exact text, and dense-layout drafts
-- Provides an auth-free `plan` command and a machine-readable `capabilities` report
-- Validates every input image's PNG/JPEG/WebP signature, byte size, and SHA-256 before attachment
-- Validates final PNG signature, dimensions, alpha status, byte size, and SHA-256
-- Returns absolute Markdown paths for inline previews
-- Avoids overwriting by default and creates `-v2`, `-v3`, and later versions
-- Diagnoses macOS, Linux, native Windows, and WSL2
-- Connects skill links, Codex installation, login, doctor, and route dry-run through one `bootstrap` command
+- Preserves the user's prompt verbatim
+- Supports one or Multiple references with deterministic attachment order
+- Supports existing-image edits, follow-up revisions, variations, compositing, transparency, exact text, and dense-layout drafts
+- Saves only inside the active workspace and avoids overwrite by default
+- Returns `PATH=...` and absolute `MARKDOWN=...` after normal generation
+- Supports macOS, Linux, native Windows, and WSL2
 
-## Supported image workflows
+## Workflow map
 
-| Workflow | Native host | Codex subscription bridge |
+| Intent | Bridge arguments |
+| --- | --- |
+| Text-to-image | `--mode generate` |
+| New image guided by a reference | `--mode generate --reference PATH` |
+| Multiple references | Repeat `--reference`; add matching `--reference-role` only for explicit roles |
+| Change an existing image | `--mode edit --edit-target PATH` |
+| Change the last generated image | Use the last returned path as the new `--edit-target` |
+| Variation | `--mode variation --edit-target PATH` |
+| Transparent output | Use `--background transparent` only when requested |
+
+The edit target is Image 1. Supporting references follow in command-line order.
+
+## Requirements and environments
+
+- Node.js 22 or newer; the [current supported LTS](https://nodejs.org/en/download) is recommended.
+- Git when installing from GitHub.
+- Codex CLI signed in with ChatGPT, unless the calling host provides native `image_gen`.
+- A ChatGPT/Codex plan and workspace that permit image generation.
+
+| Environment | Status | Keep together |
 | --- | --- | --- |
-| Text-to-image | Built-in `image_gen` | `--mode generate` |
-| One visual reference | Attach and name its role | `--reference` + `--reference-role` |
-| Multiple references | Number content/style/layout inputs | Repeat both reference flags in matching order |
-| Existing-image edit | Mark one primary target and list invariants | `--mode edit --edit-target` |
-| Localized change | Describe the spatial area and preserved surroundings | `--region` + repeated `--preserve` |
-| Style transfer / compositing | Assign a role to every input | Edit target first, then ordered role-labeled references |
-| Variation | Reuse the selected source and preserve identity/layout | `--mode variation --edit-target` |
-| Iterative revision | Make one targeted change and reuse the selected output | Use the previous output as the next edit target |
-| Transparent cutout | Request actual alpha and inspect it | `--background transparent` |
-| Exact text / infographic | Quote short text and inspect every word | Repeat `--exact-text`; put layout and typography in the prompt |
-| Several assets or variants | One native call per final image | One bridge invocation and output path per final image |
-
-This covers the practical generation and editing workflows exposed by Codex's built-in image generator while keeping the subscription-only boundary. Interactive Canvas area selection and conversation multi-select are host UI gestures; a CLI-only session expresses the same intent with a spatial `--region`, numbered files, and explicit preservation rules. API-only parameters and separately billed Images API fallbacks are intentionally not part of this project.
-
-## How it works
-
-```text
-Codex / Claude Code / compatible local agent
-        │
-        ├─ use native image_gen when the host exposes it
-        │
-        └─ otherwise use the gpt-image bridge
-              ├─ inspect OS / Node.js / Codex CLI
-              ├─ verify Sign in with ChatGPT
-              ├─ validate and role-label local image inputs
-              └─ remove API-related environment variables
-                        │
-                        ▼
-             codex exec --ignore-user-config
-                        │
-                        ▼
-               built-in $imagegen
-                        │
-                        ▼
-       <workspace>/generated-images/*.png
-                        │
-                        └─ raster validation + SHA-256 + Markdown
-```
-
-The Codex SDK and App Server can manage richer Codex threads, but one bounded `codex exec` turn is the smallest useful bridge for producing a single workspace asset.
-
-## Supported environments
-
-| Environment | Status | Installation boundary |
-| --- | --- | --- |
-| macOS, Apple Silicon or Intel | Supported | macOS Node.js + official Codex `install.sh` |
-| Linux, x64 or arm64 | Supported | Linux Node.js + official Codex `install.sh` |
-| Native Windows | Supported | Windows Node.js + official Codex `install.ps1` + directory junctions |
-| WSL2 | Supported | Keep Node, Codex, clone, skill, workspace, and output inside WSL2 |
-| WSL1 | Unsupported | Migrate to WSL2 or use native Windows |
-
-The bridge requires:
-
-- Node.js 22 or newer; the [current supported Node.js LTS](https://nodejs.org/en/download) is recommended.
-- Git when installing from the GitHub URL.
-- A ChatGPT/Codex plan and workspace that permit image generation through **Sign in with ChatGPT**.
-- A separately usable Claude Code session if Claude Code is the calling host.
-
-When the current Codex or ChatGPT host exposes `image_gen` directly, the skill uses that native route and does not install a nested Codex CLI.
+| macOS | Supported | macOS Node.js, Codex, clone, and workspace |
+| Linux | Supported | Linux Node.js, Codex, clone, and workspace |
+| Native Windows | Supported | Windows Node.js, Codex, junctions, and workspace |
+| WSL2 | Supported | Keep the complete toolchain on the Linux side |
+| WSL1 | Unsupported | Move to WSL2 or native Windows |
 
 ## Manual installation
 
-Use a persistent user-owned clone. The installed links continue to point to that clone.
+Use a persistent clone because the installed skill links point to it.
 
 ### macOS, Linux, and WSL2
 
@@ -156,7 +131,7 @@ node ./gpt-image/scripts/validate_skill.mjs
 node ./gpt-image/scripts/gpt_image.mjs bootstrap --target all --yes --json
 ```
 
-On WSL2, keep the clone under the Linux home directory rather than `/mnt/c`, and do not mix Windows Node/Codex with the WSL toolchain.
+Keep WSL2 clones under the Linux home directory, not `/mnt/c`.
 
 ### Native Windows PowerShell
 
@@ -176,24 +151,9 @@ Installed locations:
 - Claude Code: `~/.claude/skills/gpt-image`
 - Native Windows: `$env:USERPROFILE\.agents\skills\gpt-image` and `$env:USERPROFILE\.claude\skills\gpt-image`
 
-macOS, Linux, and WSL2 use symlinks. Native Windows uses directory junctions. The installer removes a former `gpt-image-workspace` alias only when its target proves that this repository owns it; ordinary directories and unrelated links are preserved.
+macOS, Linux, and WSL2 use symlinks. Native Windows uses directory junctions. Existing unrelated paths are never replaced.
 
-### Granular setup commands
-
-```bash
-node ./gpt-image/scripts/gpt_image.mjs install --target all --dry-run --json
-node ./gpt-image/scripts/gpt_image.mjs install --target all --json
-node ./gpt-image/scripts/gpt_image.mjs verify-installers --json
-node ./gpt-image/scripts/gpt_image.mjs install-codex --yes
-node ./gpt-image/scripts/gpt_image.mjs login
-node ./gpt-image/scripts/gpt_image.mjs doctor --json
-```
-
-`install-codex` uses `https://chatgpt.com/codex/install.sh` on macOS, Linux, and WSL2, and `https://chatgpt.com/codex/install.ps1` on native Windows. `verify-installers` checks the allowed HTTPS redirect, byte count, and SHA-256 without executing either installer.
-
-The user completes browser or device authorization personally. The installer and agent must not request or read a password, token, API key, or `~/.codex/auth.json`.
-
-A successful bootstrap receipt includes:
+A successful bootstrap includes:
 
 ```json
 {
@@ -206,177 +166,127 @@ A successful bootstrap receipt includes:
     "chatgpt_subscription_login": true,
     "api_environment_forwarded": false,
     "best_practice_pass": true
-  },
-  "generation_dry_run": {
-    "ok": true,
-    "dry_run": true
   }
 }
 ```
+
+The user completes browser or device authorization personally. The skill never requests or reads a password, token, API key, or `~/.codex/auth.json`.
 
 ## Usage
 
 Codex:
 
 ```text
-$gpt-image Create a small cobalt-blue glass robot on a warm off-white background. Save it in the current project and show it inline.
+$gpt-image A cobalt-blue glass robot on a warm off-white background.
 ```
 
 Claude Code:
 
 ```text
-/gpt-image Create a small cobalt-blue glass robot on a warm off-white background. Save it in the current project and show it inline.
+/gpt-image A cobalt-blue glass robot on a warm off-white background.
 ```
 
 Direct runner:
 
 ```bash
 node ./gpt-image/scripts/gpt_image.mjs generate \
-  --prompt "A cobalt-blue camera aperture symbol centered on a warm off-white background. No text or watermark." \
-  --out "generated-images/camera-aperture.png" \
-  --size "square" \
-  --quality "final" \
-  --background "opaque" \
-  --json
+  --prompt "A cobalt-blue glass robot on a warm off-white background." \
+  --out "generated-images/glass-robot.png"
 ```
 
-Validate authentication, routing, and output paths without generating:
+### Reference-guided generation
 
-```bash
-node ./gpt-image/scripts/gpt_image.mjs generate \
-  --prompt "smoke test" \
-  --out "generated-images/smoke-test.png" \
-  --dry-run \
-  --json
+In Claude Code, give the skill a stable path:
+
+```text
+/gpt-image Use @references/robot.png as the character reference. Draw it riding a bicycle.
 ```
 
-Inspect the full capability contract:
-
-```bash
-node ./gpt-image/scripts/gpt_image.mjs capabilities --json
-```
-
-Inspect a workspace PNG produced by a native host or the bridge:
-
-```bash
-node ./gpt-image/scripts/gpt_image.mjs inspect \
-  --input "generated-images/product-hero.png" \
-  --json
-```
-
-Add `--require-transparency` for a transparent asset; validation fails when the PNG has no alpha channel or transparency chunk.
-
-Validate a reference or edit plan without authentication or image-generation usage:
-
-```bash
-node ./gpt-image/scripts/gpt_image.mjs plan \
-  --mode edit \
-  --prompt "Replace only the mug with a small potted plant." \
-  --edit-target "/absolute/path/product-photo.png" \
-  --region "the mug on the left side of the desk" \
-  --preserve "person, desk layout, lighting, colors, crop, and every other detail" \
-  --avoid "text, logos, and watermarks" \
-  --out "generated-images/plant-edit.png" \
-  --json
-```
-
-Edit one primary image:
-
-```bash
-node ./gpt-image/scripts/gpt_image.mjs generate \
-  --mode edit \
-  --prompt "Keep the person and composition unchanged; replace only the background with a warm sunset." \
-  --edit-target "/absolute/path/reference.png" \
-  --preserve "person, pose, composition, crop, lighting direction, and foreground" \
-  --out "generated-images/sunset-edit.png" \
-  --json
-```
-
-Generate from multiple role-labeled references:
+Direct runner:
 
 ```bash
 node ./gpt-image/scripts/gpt_image.mjs generate \
   --mode generate \
-  --prompt "Create a landing-page hero. Use Image 1 for the product and Image 2 only for line work, palette, and shadows. Leave the upper-right clear for copy." \
-  --reference "/absolute/path/product.png" \
-  --reference-role "product identity and camera-angle reference" \
-  --reference "/absolute/path/style.png" \
-  --reference-role "line work, palette, and shadow reference" \
-  --avoid "logos, text, and watermarks" \
-  --out "generated-images/product-hero.png" \
-  --json
+  --prompt "Draw this character riding a bicycle." \
+  --reference "/absolute/path/robot.png" \
+  --out "generated-images/robot-bicycle.png"
 ```
 
-Create a variation, then use its output as the next edit target for another targeted revision:
+### Edit and continue editing
+
+First edit:
 
 ```bash
 node ./gpt-image/scripts/gpt_image.mjs generate \
-  --mode variation \
-  --prompt "Create a warmer evening variation with softer shadows." \
-  --edit-target "generated-images/product-hero.png" \
-  --preserve "product identity, camera angle, layout, and crop" \
-  --out "generated-images/product-hero-evening.png" \
-  --json
+  --mode edit \
+  --prompt "Replace the bicycle basket with a small wooden crate." \
+  --edit-target "generated-images/robot-bicycle.png" \
+  --out "generated-images/robot-bicycle-crate.png"
 ```
 
-The runner attaches the edit target as Image 1, then supporting references in command-line order. Every JSON receipt records each input's attachment index, role, detected format, byte size, and SHA-256.
+Follow-up edit—use the edited result, not the original:
 
-## Subscription-only safeguards
+```bash
+node ./gpt-image/scripts/gpt_image.mjs generate \
+  --mode edit \
+  --prompt "Make the wooden crate dark green." \
+  --edit-target "generated-images/robot-bicycle-crate.png" \
+  --out "generated-images/robot-bicycle-green-crate.png"
+```
 
-- Removes `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`, and `CODEX_ACCESS_TOKEN` from every Codex child process.
-- Checks redacted `codex login status` and `codex doctor --json` output for explicit ChatGPT-auth evidence.
-- Stops before generation when API-key authentication is detected or ChatGPT authentication cannot be verified.
+### Multiple references
+
+```bash
+node ./gpt-image/scripts/gpt_image.mjs generate \
+  --prompt "Use Image 1 for the character and Image 2 for the bicycle design." \
+  --reference "/absolute/path/character.png" \
+  --reference-role "character" \
+  --reference "/absolute/path/bicycle.png" \
+  --reference-role "bicycle design" \
+  --out "generated-images/combined.png"
+```
+
+### Optional diagnostics
+
+```bash
+node ./gpt-image/scripts/gpt_image.mjs doctor --json
+node ./gpt-image/scripts/gpt_image.mjs capabilities --json
+node ./gpt-image/scripts/gpt_image.mjs inspect --input "generated-images/combined.png" --json
+node ./gpt-image/scripts/gpt_image.mjs plan --prompt "test" --reference "/path/reference.png" --out "generated-images/test.png" --json
+node ./gpt-image/scripts/gpt_image.mjs generate --prompt "test" --out "generated-images/test.png" --dry-run --json
+```
+
+## Why generated images no longer have SHA receipts
+
+SHA-256 identifies exact bytes. It is useful for proving that a downloaded installer is the same file that was inspected, but it does not tell whether a generated image followed the prompt or used a reference correctly. Requiring hashes on every input and output added work and receipt noise without improving the normal user result.
+
+Generated images now receive only lightweight file/signature checks. `verify-installers` still reports SHA-256 because installer integrity is a meaningful security use:
+
+```bash
+node ./gpt-image/scripts/gpt_image.mjs verify-installers --json
+```
+
+## Subscription and privacy safeguards
+
+- Removes `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`, and `CODEX_ACCESS_TOKEN` from Codex child processes.
+- Blocks generation unless redacted diagnostics establish ChatGPT authentication.
+- Calls `codex login status` once on the normal generation path; Codex Doctor is used only for explicit or ambiguous diagnosis.
 - Contains no OpenAI Images API endpoint or `/v1/images` request.
-- Never reads authentication files and constrains output to the active workspace.
-- Never replaces an existing output without `--overwrite`.
-
-## Security and privacy
-
-- No credential, token, personal filesystem path, or private email address is required in this repository.
-- Authentication stays in the user's local Codex installation; the skill never reads `~/.codex/auth.json`.
-- Diagnostic and bridge output is sanitized before it can be returned.
-- Official installer redirects are restricted to `chatgpt.com` and `releases.openai.com`.
-- GitHub Actions uses read-only repository permissions and pinned action commit SHAs.
-
-Before publishing a fork, scan the full Git history rather than only the working tree. Never commit Codex authentication files, shell profiles, `.env` files, API keys, or generated diagnostics containing account data.
+- Never reads auth files and never writes the generated image outside the active workspace.
+- Never overwrites an existing image unless `--overwrite` is explicit.
 
 ## Skill best-practice checks
 
 - [x] One focused job: subscription-backed GPT image generation, workspace save, and inline preview
-- [x] Only name and description are always discoverable; body and references load on demand
-- [x] Scripts are limited to deterministic installation, authentication, request planning, path, and file-validation behavior
-- [x] Node.js 22+, native Windows/WSL2 boundaries, persistent clone, and non-destructive host links
-- [x] Machine-readable `best_practice_pass` and `next_action` fields from `doctor --json`
-- [x] Generation dry-run before the first live bridge request
-- [x] Auth-free plan validation for generate, edit, variation, and ordered multi-reference requests
-- [x] Explicit input roles plus PNG/JPEG/WebP signature, byte-size, and SHA-256 validation
-- [x] One inspected output per call for safer iterative edits and variants
+- [x] Concise `SKILL.md` with task-specific references loaded only when needed
+- [x] Exact prompt fidelity with no inferred art direction
+- [x] Stable-path and actual-attachment contract for Claude Code references
+- [x] Last-output-as-edit-target contract for follow-up revisions
+- [x] Direct generation by default; plan, dry-run, and detailed receipts are optional
+- [x] Minimal output validation without generated-image hashes
+- [x] Node.js 22+, macOS, Linux, native Windows, and WSL2 setup guidance
 - [x] Ubuntu, macOS, and Windows CI on Node.js 22 and 24
-- [x] A GitHub Star is an opt-in request after success and is never automatic
-
-Release validation:
-
-```bash
-node --check ./gpt-image/scripts/gpt_image.mjs
-node ./gpt-image/scripts/validate_skill.mjs
-node ./gpt-image/scripts/gpt_image.mjs capabilities --json
-node ./gpt-image/scripts/gpt_image.mjs inspect --input "generated-images/subscription-workflow-smoke.png" --json
-node ./gpt-image/scripts/gpt_image.mjs install --target all --dry-run --json
-node ./gpt-image/scripts/gpt_image.mjs doctor --json
-node ./gpt-image/scripts/gpt_image.mjs plan --mode edit --prompt "release reference check" --edit-target "generated-images/subscription-workflow-smoke.png" --preserve "all unspecified details" --out "generated-images/release-edit-check.png" --json
-node ./gpt-image/scripts/gpt_image.mjs generate --prompt "release route check" --out "generated-images/release-check.png" --dry-run --json
-```
-
-GitHub Actions validates syntax, the repository validator, and real host-link installation on Ubuntu, macOS, and Windows with Node.js 22 and 24. CI has no user authentication, so it does not log in or generate a live image.
-
-## Troubleshooting
-
-- `node_supported=false`: follow the OS-specific Node.js 22+ instructions in [Cross-platform setup](./gpt-image/references/platform-setup.md), then open a new shell.
-- `codex_available=false`: run `codex --version` in the same shell; restart the terminal or agent after a new installation.
-- WSL failure: WSL1 is unsupported. Keep all runtimes and the clone on the Linux side of WSL2.
-- `chatgpt_subscription_login=false`: run `node ./gpt-image/scripts/gpt_image.mjs login`, then rerun doctor.
-- API-key auth detected: the runner will not log out automatically. The user must separately decide whether to replace that authentication.
-- Skill not visible: start a new Codex or Claude Code session.
+- [x] A GitHub Star is opt-in and never automatic
 
 ## Update
 
@@ -400,9 +310,7 @@ node "$InstallDir\gpt-image\scripts\gpt_image.mjs" bootstrap --target all --yes 
 .
 ├── AGENT_INSTALL.md
 ├── README.md
-├── .github/workflows/validate.yml
-├── generated-images/reference-edit-smoke.png
-├── generated-images/subscription-workflow-smoke.png
+├── generated-images/
 └── gpt-image/
     ├── SKILL.md
     ├── agents/openai.yaml
@@ -415,19 +323,13 @@ node "$InstallDir\gpt-image\scripts\gpt_image.mjs" bootstrap --target all --yes 
         └── validate_skill.mjs
 ```
 
-Related documentation:
+Official references:
 
-- [One-time agent installation contract](./AGENT_INSTALL.md)
-- [Skill execution contract](./gpt-image/SKILL.md)
-- [Subscription runtime and authentication boundary](./gpt-image/references/subscription-runtime.md)
-- [Reference images, edits, variations, and iterative workflows](./gpt-image/references/image-workflows.md)
-- [macOS, Linux, Windows, and WSL2 setup](./gpt-image/references/platform-setup.md)
+- [OpenAI: Image generation](https://learn.chatgpt.com/docs/image-generation)
+- [OpenAI: Image inputs](https://learn.chatgpt.com/docs/image-inputs)
 - [OpenAI: Build skills](https://learn.chatgpt.com/docs/build-skills)
-- [Codex image generation](https://learn.chatgpt.com/docs/image-generation)
-- [Codex CLI](https://learn.chatgpt.com/docs/codex/cli)
-- [Codex authentication](https://learn.chatgpt.com/docs/auth)
-- [Claude Code skills](https://code.claude.com/docs/en/slash-commands)
+- [Claude Code: Work with images](https://code.claude.com/docs/en/tutorials)
 
----
+## Star the project
 
-If the installation or your first image works well, please consider leaving the repository a ⭐ Star. Real user feedback and Stars help guide maintenance and future improvements.
+If GPT Image Skill worked well for you, consider [starring the repository](https://github.com/GENEXIS-AI/gpt-image-skill). It helps others discover the project and supports future improvements. An agent may suggest this after a successful setup or image, but it must never click Star without an explicit user request.

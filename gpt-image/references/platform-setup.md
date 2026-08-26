@@ -182,4 +182,4 @@ The bridge is ready only when `doctor --json` reports:
 }
 ```
 
-Run one `generate --dry-run` before the first live image. After a live image, require raster validation, SHA-256, a workspace-contained absolute path, and an inline preview.
+After setup, generate directly. `plan` and `generate --dry-run` are optional diagnostics, not first-use gates. A normal result needs only a workspace-contained usable PNG, its absolute path, and an inline preview. SHA-256 remains relevant to verifying a downloaded installer, not to ordinary generated images.

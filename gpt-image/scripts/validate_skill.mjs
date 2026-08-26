@@ -76,6 +76,10 @@ for (const token of [
   "platformRuntime",
   "best_practice_pass",
   "inspectInputImage",
+  "PROMPT FIDELITY CONTRACT",
+  "BEGIN USER PROMPT",
+  "Pass every numbered image",
+  "This Codex turn is ephemeral",
   "--edit-target",
   "--reference-role",
   "--preserve",
@@ -91,10 +95,20 @@ for (const token of [
 requireCondition(!runner.includes("https://api.openai.com"), "Runner must not contain an OpenAI API endpoint.");
 requireCondition(!runner.includes("/v1/images"), "Runner must not contain an Images API endpoint.");
 requireCondition(!runner.includes('readFile(path.join(os.homedir(), ".codex", "auth.json"'), "Runner must not read auth.json.");
+requireCondition(
+  (runner.match(/createHash\("sha256"\)/g) || []).length === 1,
+  "SHA-256 must be limited to official installer verification, not generated images.",
+);
+requireCondition(!runner.includes("generation_dry_run"), "Bootstrap must not require a generation dry-run.");
 
-for (const token of ["Windows", "WSL2", "Node.js 22", "best_practice_pass", "verify-installers", "bootstrap --yes", "$gpt-image", "/gpt-image", "Multiple references", "--edit-target", "--reference-role", "capabilities --json", "inspect --input"]) {
+for (const token of ["Windows", "WSL2", "Node.js 22", "best_practice_pass", "verify-installers", "bootstrap --target all --yes", "$gpt-image", "/gpt-image", "Multiple references", "--edit-target", "--reference-role", "capabilities --json", "inspect --input", "prompt is authoritative", "Revisions always edit the latest result", "Why generated images no longer have SHA receipts"]) {
   requireCondition(readme.includes(token), `README is missing cross-platform guidance: ${token}`);
 }
+
+for (const token of ["pass it through unchanged", "generated-images/inputs/", "previously returned output", "every bridge call as ephemeral", "Do not require SHA-256"]) {
+  requireCondition(skill.includes(token), `SKILL.md is missing a lightweight fidelity/reference rule: ${token}`);
+}
+requireCondition(!skill.includes("For vague requests"), "SKILL.md must not encourage inferred prompt expansion.");
 
 requireCondition(runner.includes('const SKILL_NAME = "gpt-image"'), "Runner skill name must be gpt-image.");
 requireCondition(runner.includes("owned-legacy-link"), "Runner must safely migrate repository-owned legacy links.");

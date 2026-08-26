@@ -35,7 +35,7 @@ const CODEX_INSTALLER_URLS = {
 const ALLOWED_INSTALLER_HOSTS = new Set(["chatgpt.com", "releases.openai.com"]);
 const DEFAULT_TIMEOUT_MS = 12 * 60 * 1000;
 const MAX_CAPTURE_BYTES = 24 * 1024 * 1024;
-const CONTRACT_VERSION = 2;
+const CONTRACT_VERSION = 3;
 const IMAGE_MODES = new Set(["auto", "generate", "edit", "variation"]);
 const REPEATABLE_FLAGS = new Set([
   "reference",
@@ -139,7 +139,8 @@ Plan and generate options:
   --verbose               Generate only: show sanitized Codex bridge output.
 
 Reference attachment order is deterministic: edit target first, then references.
-Use plan to validate image signatures, roles, prompt contract, and output without auth.
+The user prompt is forwarded unchanged; attachment labels are routing metadata only.
+Plan and dry-run are optional troubleshooting commands, not generation prerequisites.
 
 Runtime:
   Node.js ${MIN_NODE_MAJOR}+ is required; the latest supported LTS is recommended.
@@ -322,7 +323,7 @@ function detectAuthEvidence(loginText, doctor) {
   return { verified: null, state: "unknown", evidence: "No redacted ChatGPT-auth evidence found" };
 }
 
-function inspectSubscriptionAuth() {
+function inspectSubscriptionAuth(deep = false) {
   const codex = probeCodex();
   if (!codex.available) {
     return {
@@ -335,9 +336,17 @@ function inspectSubscriptionAuth() {
   }
 
   const login = runCodexSyncCapture(["login", "status"]);
-  const doctorRun = runCodexSyncCapture(["doctor", "--json"]);
-  const doctor = parseDoctorJson(doctorRun.stdout);
-  const auth = detectAuthEvidence(`${login.stdout}\n${login.stderr}`, doctor);
+  const loginText = `${login.stdout}\n${login.stderr}`;
+  let doctor = null;
+  let auth = detectAuthEvidence(loginText, doctor);
+
+  // Normal generation needs one quick auth check. Reserve Codex Doctor for
+  // explicit diagnostics or an ambiguous login-status response.
+  if (deep || auth.state === "unknown") {
+    const doctorRun = runCodexSyncCapture(["doctor", "--json"]);
+    doctor = parseDoctorJson(doctorRun.stdout);
+    auth = detectAuthEvidence(loginText, doctor);
+  }
 
   return {
     codex,
@@ -499,7 +508,6 @@ async function validateImage(output, options = {}) {
     width: png.width,
     height: png.height,
     has_transparency: png.has_transparency,
-    sha256: createHash("sha256").update(bytes).digest("hex"),
   };
 }
 
@@ -517,12 +525,8 @@ async function inspectInputImage(raw, workspace, label) {
   const png = format === "png" ? inspectPng(bytes) : null;
   return {
     path: input,
-    bytes: info.size,
     format,
-    width: png?.width ?? null,
-    height: png?.height ?? null,
-    has_transparency: png?.has_transparency ?? null,
-    sha256: createHash("sha256").update(bytes).digest("hex"),
+    dimensions: png ? `${png.width}x${png.height}` : null,
   };
 }
 
@@ -657,8 +661,8 @@ function assertKnownImageOptions(args) {
 
 async function normalizeGenerateOptions(args) {
   assertKnownImageOptions(args);
-  const prompt = String(args.prompt || "").trim();
-  if (!prompt) throw new CliError("--prompt is required.", 2);
+  const prompt = String(args.prompt ?? "");
+  if (!prompt.trim()) throw new CliError("--prompt is required.", 2);
 
   const workspace = await resolveWorkspace(args.cwd);
   const timeoutSeconds = Number(args["timeout-seconds"] || DEFAULT_TIMEOUT_MS / 1000);
@@ -711,7 +715,7 @@ async function normalizeGenerateOptions(args) {
     references.push({
       ...inspected,
       attachment_index: index + (editTarget ? 2 : 1),
-      role: referenceRoles[index] || "visual guidance",
+      role: referenceRoles[index] || "reference provided by the user",
     });
   }
 
@@ -738,71 +742,61 @@ async function normalizeGenerateOptions(args) {
   };
 }
 
-function bulletSection(label, values) {
-  if (!values.length) return `${label}: none specified`;
-  return `${label}:\n${values.map((value) => `- ${value}`).join("\n")}`;
-}
-
 function buildBridgePrompt(options) {
   const inputs = [];
   if (options.editTarget) {
     inputs.push(
       options.mode === "variation"
-        ? `Image ${options.editTarget.attachment_index}: PRIMARY VARIATION SOURCE. Derive the new result from this image while preserving the named invariants.`
-        : `Image ${options.editTarget.attachment_index}: PRIMARY EDIT TARGET. Change this image according to the request and preserve everything else.`,
+        ? `Image ${options.editTarget.attachment_index}: current variation source.`
+        : `Image ${options.editTarget.attachment_index}: current edit target. This is the image to modify in this invocation.`,
     );
   }
   for (const reference of options.references) {
-    inputs.push(
-      `Image ${reference.attachment_index}: SUPPORTING REFERENCE — ${reference.role}. Use it only for that stated role unless the user request says otherwise.`,
-    );
+    inputs.push(`Image ${reference.attachment_index}: reference — ${reference.role}.`);
   }
 
   const modeInstruction = {
-    generate:
-      "Create a new image. Attached images are visual guidance, not files to modify.",
-    edit:
-      "Edit Image 1 as the primary target. Change only what the request permits and preserve every unspecified detail.",
-    variation:
-      "Create a distinct variation derived from Image 1. Preserve the requested identity, content, and composition invariants while applying the requested variation.",
+    generate: "Create a new image from the exact user request and any attached references.",
+    edit: "Edit Image 1 according to the exact user request.",
+    variation: "Create a variation of Image 1 according to the exact user request.",
   }[options.mode];
 
-  const exactText = options.exactText.map((value) => JSON.stringify(value));
-  const transparencyInstruction = /transparent|alpha/i.test(options.background)
-    ? "The saved PNG must have a genuinely transparent alpha background; do not fake transparency with a checkerboard or solid color."
-    : "Follow the requested background treatment.";
+  const routing = [];
+  if (inputs.length) {
+    routing.push(
+      "ATTACHED IMAGE ROUTING (operational metadata, not creative direction):",
+      ...inputs,
+      "Pass every numbered image into the image-generation call. Do not omit an image or replace it with a text description.",
+      "This Codex turn is ephemeral; no image from another turn exists unless it is attached here.",
+    );
+  }
+  if (options.region) routing.push(`User-supplied edit region: ${options.region}`);
+  for (const value of options.preserve) routing.push(`User-supplied preserve constraint: ${value}`);
+  for (const value of options.avoid) routing.push(`User-supplied avoid constraint: ${value}`);
+  for (const value of options.exactText) routing.push(`User-supplied exact text: ${JSON.stringify(value)}`);
+  if (options.size !== "auto") routing.push(`User-supplied size/aspect: ${options.size}`);
+  if (options.quality !== "auto") routing.push(`User-supplied quality: ${options.quality}`);
+  if (options.background !== "auto") routing.push(`User-supplied background: ${options.background}`);
 
-  return `Use $imagegen to produce exactly one final raster image through Codex's built-in image generation capability.
+  return `Use $imagegen exactly once through Codex's built-in image generation capability.
 
-Operation mode: ${options.mode.toUpperCase()}
-${modeInstruction}
+PROMPT FIDELITY CONTRACT (mandatory):
+- The text between BEGIN USER PROMPT and END USER PROMPT is the authoritative image request.
+- Pass that text through unchanged. Do not rewrite, expand, optimize, beautify, summarize, translate, or add creative details.
+- Do not invent composition, lighting, style, colors, objects, materials, text, exclusions, or preservation rules.
+- Use routing metadata only to attach the correct files and apply constraints the user explicitly supplied.
 
-User request:
+BEGIN USER PROMPT
 ${options.prompt}
+END USER PROMPT
 
-Attached image contract:
-${inputs.length ? inputs.join("\n") : "No input images are attached."}
-
-Localized edit region: ${options.region || "none specified"}
-${bulletSection("Must preserve", options.preserve)}
-${bulletSection("Must avoid", options.avoid)}
-${bulletSection("Exact in-image text (verbatim, including capitalization)", exactText)}
-
-Requested size or aspect: ${options.size}
-Requested quality: ${options.quality}
-Requested background: ${options.background}
-${transparencyInstruction}
-
-For multiple attached images, apply only the numbered roles and relationships above. For an edit, repeat every preservation invariant while making the change. If exact text is requested, include only that exact text unless the user explicitly asks for more and inspect every word before saving.
-
-Use only Codex's built-in image_gen path under the signed-in ChatGPT subscription.
-Never use OPENAI_API_KEY, an Images API call, curl to api.openai.com, or any separately billed fallback.
-Inspect the generated result against the subject, composition, text, region, preservation, avoid, and transparency requirements.
-Copy or move the final selected PNG to this exact path:
+Operation: ${options.mode}. ${modeInstruction}
+${routing.length ? `\n${routing.join("\n")}\n` : ""}
+Use only the signed-in ChatGPT subscription path. Never use OPENAI_API_KEY, an Images API call, api.openai.com, or a separately billed fallback.
+Save exactly one final PNG to this path:
 ${options.output}
 
-Do not modify any other workspace file. The destination does not exist unless replacement was explicitly authorized.
-Your final response must contain only the absolute saved path.`;
+Do not modify any other workspace file. Do not return a plan or prompt advice. Your final response must contain only the absolute saved path.`;
 }
 
 function attachmentPaths(options) {
@@ -812,8 +806,7 @@ function attachmentPaths(options) {
   ];
 }
 
-async function generateWithSubscription(options) {
-  const auth = inspectSubscriptionAuth();
+async function generateWithSubscription(options, auth) {
   if (!auth.codex.available) {
     throw new CliError(
       "Codex CLI is not installed. Run install-codex --yes, then complete ChatGPT login.",
@@ -1133,7 +1126,7 @@ async function runLogin(args) {
 }
 
 async function buildDoctorReport() {
-  const auth = inspectSubscriptionAuth();
+  const auth = inspectSubscriptionAuth(true);
   const node = nodeRuntime();
   const platform = platformRuntime();
   const codexSkill = await safeTargetState(path.join(os.homedir(), ".agents", "skills", SKILL_NAME));
@@ -1145,7 +1138,7 @@ async function buildDoctorReport() {
     path.join(os.homedir(), ".claude", "skills", LEGACY_SKILL_NAME),
   );
   const installer = CODEX_INSTALLER_URLS[process.platform] || null;
-  let nextAction = "Ready for a subscription-backed dry run.";
+  let nextAction = "Ready for subscription-backed image generation.";
   if (!platform.supported) {
     nextAction = platform.wslVersion === 1
       ? "Migrate this environment to WSL2, then reinstall Node, Codex, and the skill inside WSL2."
@@ -1159,7 +1152,7 @@ async function buildDoctorReport() {
   } else if (codexSkill.state !== "installed" || claudeSkill.state !== "installed") {
     nextAction = codexSkill.state === "occupied" || claudeSkill.state === "occupied"
       ? "Inspect the occupied host skill path. Do not replace it automatically."
-      : "Run install --target all --dry-run, then install --target all.";
+      : "Run install --target all.";
   } else if (
     legacyCodexSkill.state === "owned-legacy-link" ||
     legacyClaudeSkill.state === "owned-legacy-link"
@@ -1261,28 +1254,8 @@ async function runBootstrap(args) {
   }
 
   const doctor = await buildDoctorReport();
-  let generationDryRun = null;
-  if (doctor.ready && doctor.best_practice_pass) {
-    const options = await normalizeGenerateOptions({
-      _: [],
-      reference: [],
-      prompt: "GPT Image Skill installation route check",
-      cwd: process.cwd(),
-      out: path.join("generated-images", "gpt-image-install-check.png"),
-    });
-    generationDryRun = {
-      ok: true,
-      backend: "Codex built-in image_gen",
-      billing_path: "ChatGPT subscription; Images API disabled",
-      auth_evidence: doctor.auth_evidence,
-      workspace: options.workspace,
-      path: options.output,
-      dry_run: true,
-    };
-    actions.push("generation-route-dry-run-passed");
-  }
-
-  const ok = Boolean(doctor.ready && doctor.best_practice_pass && generationDryRun?.ok);
+  const ok = Boolean(doctor.ready && doctor.best_practice_pass);
+  if (ok) actions.push("subscription-route-ready");
   const result = {
     ok,
     status: ok ? "ready" : "needs-attention",
@@ -1293,7 +1266,6 @@ async function runBootstrap(args) {
     codex_installation: codexInstallation,
     login,
     doctor,
-    generation_dry_run: generationDryRun,
     next_action: ok ? "Start a new agent session if needed, then invoke $gpt-image or /gpt-image." : doctor.next_action,
   };
   printResult(result, Boolean(args.json));
@@ -1322,7 +1294,8 @@ function capabilityReport() {
       multiple_references: true,
       per_reference_roles: true,
       deterministic_attachment_order: "edit target first, then supporting references",
-      signature_bytes_sha256_validation: true,
+      stable_local_paths_required: true,
+      signature_validation: true,
     },
     workflows: [
       "text-to-image",
@@ -1339,6 +1312,7 @@ function capabilityReport() {
     ],
     controls: [
       "prompt",
+      "verbatim prompt forwarding",
       "mode",
       "reference roles",
       "localized region",
@@ -1353,13 +1327,14 @@ function capabilityReport() {
       format: "png",
       workspace_contained: true,
       non_destructive_by_default: true,
-      validation: ["PNG signature", "dimensions", "alpha status", "byte size", "sha256"],
+      validation: ["PNG signature", "dimensions", "alpha status", "byte size"],
       inline_markdown: true,
       multiple_assets_or_variants: "one native call or bridge invocation per final asset",
     },
     host_only_features: {
       canvas_area_selection: "Use the ChatGPT Canvas UI when available; the CLI bridge uses --region text.",
       conversation_multi_select: "Use the host UI when available; the CLI bridge accepts ordered local files.",
+      claude_pasted_image: "Resolve it to a stable local path before starting the bridge; never silently omit it.",
     },
     unsupported_by_design: [
       "OpenAI Images API",
@@ -1474,23 +1449,25 @@ async function runGenerate(args) {
     return;
   }
 
-  await generateWithSubscription(options);
+  await generateWithSubscription(options, auth);
   const validation = await validateImage(options.output, {
     requireTransparency: /transparent|alpha/i.test(options.background),
   });
-  printResult(
-    {
-      ...route,
-      bytes: validation.bytes,
-      format: validation.format,
-      width: validation.width,
-      height: validation.height,
-      has_transparency: validation.has_transparency,
-      sha256: validation.sha256,
-      markdown: markdownFor(options.output),
-    },
-    Boolean(args.json),
-  );
+  const result = {
+    ...route,
+    bytes: validation.bytes,
+    format: validation.format,
+    width: validation.width,
+    height: validation.height,
+    has_transparency: validation.has_transparency,
+    markdown: markdownFor(options.output),
+  };
+  if (args.json) {
+    printResult(result, true);
+  } else {
+    process.stdout.write(`PATH=${options.output}\n`);
+    process.stdout.write(`MARKDOWN=${result.markdown}\n`);
+  }
 }
 
 async function main() {

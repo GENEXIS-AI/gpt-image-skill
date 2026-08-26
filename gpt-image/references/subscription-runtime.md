@@ -19,7 +19,7 @@ This skill has no Images API route. It removes `OPENAI_API_KEY`, `OPENAI_BASE_UR
 ## Why Codex CLI is the bridge
 
 - Codex's built-in image generation uses `gpt-image-2` and can count against general Codex usage limits when the user is signed in with ChatGPT.
-- `codex exec` provides a bounded non-interactive agent turn and supports one or more initial reference images with repeated `--image`. The bridge attaches a primary edit target first, then ordered supporting references.
+- `codex exec` provides a bounded non-interactive agent turn and supports one or more initial reference images with repeated `--image`. The bridge attaches a primary edit target first, then ordered supporting references. Each invocation is ephemeral, so a revision must reattach the current output and any still-needed references.
 - The Codex SDK controls coding-focused Codex threads. It is useful when an application needs thread lifecycle APIs, but it does not remove the need for the Codex runtime.
 - Codex App Server is the JSON-RPC interface for rich clients needing conversation history, approvals, authentication state, and streamed events. It is unnecessary overhead for one generated workspace asset.
 
@@ -54,7 +54,7 @@ codex login --device-auth
 
 The user completes the browser/device step. Never use `codex login --with-api-key`.
 
-The diagnostic checks redacted output from `codex login status` and `codex doctor --json`. A positive result requires explicit ChatGPT-auth evidence such as `Logged in using ChatGPT` or a doctor field whose reachability mode is `ChatGPT auth`. Unrelated Doctor failures, such as a malformed `config.toml`, do not negate a positive redacted ChatGPT-auth field because generation itself runs with `--ignore-user-config`.
+Normal generation checks redacted `codex login status` once. It calls `codex doctor --json` only for an explicit Doctor run or when login status is ambiguous. A positive result requires explicit ChatGPT-auth evidence such as `Logged in using ChatGPT` or a Doctor field whose reachability mode is `ChatGPT auth`. Unrelated Doctor failures, such as a malformed `config.toml`, do not negate a positive redacted ChatGPT-auth field because generation itself runs with `--ignore-user-config`.
 
 If an API-key login is detected, block generation. Do not automatically log out because that replaces authentication state. Ask the user whether they want to replace it with ChatGPT sign-in.
 
@@ -69,4 +69,4 @@ If an API-key login is detected, block generation. Do not automatically log out 
 
 Image generation is not free of limits: it consumes the user's included Codex/ChatGPT allowance, and image turns can count more heavily than ordinary turns. It does not create a separately billed Images API request because this skill never calls that API and strips API-key environment variables from the Codex child process.
 
-The subscription bridge exposes built-in generation and editing through natural-language image instructions, not Images API parameters. Its runner supports new images, a primary edit target, single or multiple role-labeled references, spatial edits, preservation and avoid lists, variations, transparent-background requests, exact text, and one final PNG per invocation. ChatGPT Canvas area selection and conversation multi-select remain host UI features; CLI sessions express those intents with `--region`, ordered local inputs, and explicit invariants.
+The subscription bridge exposes built-in generation and editing through natural-language image instructions, not Images API parameters. It forwards the user's image prompt unchanged and uses separate routing metadata only to attach the requested local files. Its runner supports new images, a primary edit target, single or multiple ordered references, spatial edits, explicit preservation and avoid lists, variations, transparent-background requests, exact text, and one final PNG per invocation. ChatGPT Canvas area selection and conversation multi-select remain host UI features; CLI sessions express those intents with `--region` and ordered local inputs only when the user asks for them.
