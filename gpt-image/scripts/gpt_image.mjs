@@ -35,7 +35,7 @@ const CODEX_INSTALLER_URLS = {
 const ALLOWED_INSTALLER_HOSTS = new Set(["chatgpt.com", "releases.openai.com"]);
 const DEFAULT_TIMEOUT_MS = 12 * 60 * 1000;
 const MAX_CAPTURE_BYTES = 24 * 1024 * 1024;
-const CONTRACT_VERSION = 3;
+const CONTRACT_VERSION = 4;
 const IMAGE_MODES = new Set(["auto", "generate", "edit", "variation"]);
 const REPEATABLE_FLAGS = new Set([
   "reference",
@@ -113,6 +113,7 @@ Usage:
   node scripts/gpt_image.mjs install-codex --yes
   node scripts/gpt_image.mjs login
   node scripts/gpt_image.mjs doctor [--json]
+  node scripts/gpt_image.mjs guide [--json]
   node scripts/gpt_image.mjs capabilities [--json]
   node scripts/gpt_image.mjs inspect --input PATH [--require-transparency] [--json]
   node scripts/gpt_image.mjs plan --prompt TEXT [options]
@@ -134,13 +135,13 @@ Plan and generate options:
   --background TEXT       Prompt instruction, e.g. transparent or opaque.
   --timeout-seconds N     Default: ${DEFAULT_TIMEOUT_MS / 1000}
   --overwrite             Replace the exact output path.
-  --dry-run               Generate only: verify auth and route without generation.
+  --dry-run               Generate only: check sign-in and paths without creating an image.
   --json                  Print machine-readable output.
   --verbose               Generate only: show sanitized Codex bridge output.
 
 Reference attachment order is deterministic: edit target first, then references.
 The user prompt is forwarded unchanged; attachment labels are routing metadata only.
-Plan and dry-run are optional troubleshooting commands, not generation prerequisites.
+Planning and the no-image setup check are optional troubleshooting tools, not generation prerequisites.
 
 Runtime:
   Node.js ${MIN_NODE_MAJOR}+ is required; the latest supported LTS is recommended.
@@ -545,6 +546,54 @@ function printResult(result, asJson) {
     if (value === null || value === undefined || typeof value === "object") continue;
     process.stdout.write(`${key.toUpperCase()}=${value}\n`);
   }
+}
+
+function gettingStartedGuide() {
+  return {
+    show_once_after_install: true,
+    present_in_user_language: true,
+    summary: "Ask naturally. Include an aspect ratio or quality phrase only when it matters.",
+    prompt_pattern: "<what to create or change>, <aspect ratio>, <quality or detail level>.",
+    common_aspect_ratios: [
+      { ratio: "1:1", use: "square posts, icons, and product images" },
+      { ratio: "16:9", use: "wide banners, slides, and video thumbnails" },
+      { ratio: "9:16", use: "vertical mobile and social images" },
+      { ratio: "4:3", use: "landscape illustrations and presentations" },
+      { ratio: "3:4", use: "portrait illustrations and posters" },
+    ],
+    quality_phrases: [
+      { phrase: "draft", use: "early exploration" },
+      { phrase: "high quality", use: "a polished result" },
+      { phrase: "high detail, final quality", use: "a final asset with more detail" },
+    ],
+    examples: {
+      codex: "$gpt-image Create a cozy reading room at sunset, 16:9, high quality.",
+      claude: "/gpt-image Create a square product image of a blue glass robot, 1:1, high detail, final quality.",
+      reference: "/gpt-image Use @references/character.png as the character reference and place it in a rainy city, 9:16, high quality.",
+      revision: "/gpt-image Edit the last image: change only the jacket to red.",
+    },
+    note: "Ratios and quality phrases are natural-language requests, not fixed API presets. Exact pixel dimensions may vary with built-in image generation.",
+  };
+}
+
+function printGettingStartedGuide(guide, asJson) {
+  if (asJson) {
+    process.stdout.write(`${JSON.stringify(guide, null, 2)}\n`);
+    return;
+  }
+  process.stdout.write("GPT Image Skill is ready. No image was generated during setup.\n\n");
+  process.stdout.write("Ask naturally and add a ratio or quality phrase when it matters.\n");
+  process.stdout.write(
+    `Common aspect ratios: ${guide.common_aspect_ratios.map((item) => item.ratio).join(", ")}\n`,
+  );
+  process.stdout.write(
+    `Quality phrases: ${guide.quality_phrases.map((item) => item.phrase).join("; ")}\n\n`,
+  );
+  process.stdout.write(`Codex example: ${guide.examples.codex}\n`);
+  process.stdout.write(`Claude example: ${guide.examples.claude}\n`);
+  process.stdout.write(`Reference example: ${guide.examples.reference}\n`);
+  process.stdout.write(`Revision example: ${guide.examples.revision}\n\n`);
+  process.stdout.write(`${guide.note}\n`);
 }
 
 async function runProcess(command, args, options = {}) {
@@ -1256,9 +1305,13 @@ async function runBootstrap(args) {
   const doctor = await buildDoctorReport();
   const ok = Boolean(doctor.ready && doctor.best_practice_pass);
   if (ok) actions.push("subscription-route-ready");
+  const guide = ok ? gettingStartedGuide() : null;
   const result = {
     ok,
     status: ok ? "ready" : "needs-attention",
+    friendly_status: ok
+      ? "Setup is complete and ChatGPT sign-in is ready. No image was generated during setup."
+      : "Setup needs attention before image generation is ready.",
     skill: SKILL_NAME,
     source: SKILL_ROOT,
     actions,
@@ -1266,10 +1319,19 @@ async function runBootstrap(args) {
     codex_installation: codexInstallation,
     login,
     doctor,
+    getting_started: guide,
     next_action: ok ? "Start a new agent session if needed, then invoke $gpt-image or /gpt-image." : doctor.next_action,
   };
   printResult(result, Boolean(args.json));
+  if (ok && !args.json) {
+    process.stdout.write("\n");
+    printGettingStartedGuide(guide, false);
+  }
   if (!ok) process.exitCode = 3;
+}
+
+async function runGuide(args) {
+  printGettingStartedGuide(gettingStartedGuide(), Boolean(args.json));
 }
 
 function capabilityReport() {
@@ -1499,6 +1561,7 @@ async function main() {
   if (command === "install-codex") return await runInstallCodex(args);
   if (command === "login") return await runLogin(args);
   if (command === "doctor") return await runDoctor(args);
+  if (command === "guide") return await runGuide(args);
   if (command === "capabilities") return await runCapabilities(args);
   if (command === "inspect") return await runInspect(args);
   if (command === "plan") return await runPlan(args);

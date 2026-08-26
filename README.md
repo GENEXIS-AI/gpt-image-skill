@@ -35,11 +35,31 @@ local changes would be discarded, or existing Codex authentication would need to
 Otherwise, install the required components, run bootstrap --target all --yes --json,
 and continue until doctor reports best_practice_pass=true.
 Finally, report the persistent clone path, both installed skill paths, and ChatGPT-auth evidence.
+Then give me the brief getting_started guide in my language: common aspect ratios,
+quality phrases, one creation example, and one reference or revision example.
+Do not use unexplained jargon such as "dry-run"; call it a setup check that does not create an image.
 ```
 
 This prompt authorizes ordinary user-level setup without authorizing administrator elevation, destructive changes, replacement of existing authentication, a live generation, or a GitHub Star. The full boundary is in [AGENT_INSTALL.md](./AGENT_INSTALL.md).
 
 After setup, invoke `$gpt-image` in Codex or `/gpt-image` in Claude Code. The host loads the concise skill only for image tasks; it does not need to reread this README on every request.
+
+## What the agent shows after installation
+
+The installing agent should end with a small guide like this, translated into the user's language:
+
+```text
+GPT Image Skill is ready. No image was generated during setup.
+
+Common aspect-ratio requests: 1:1, 16:9, 9:16, 4:3, 3:4
+Quality phrases: draft, high quality, high detail / final quality
+
+Try:
+$gpt-image Create a cozy reading room at sunset, 16:9, high quality.
+/gpt-image Use @references/character.png as the character reference and place it in a rainy city, 9:16, high quality.
+```
+
+These are common natural-language requests, not a fixed API size list. Other framing or dimension requests can be written normally, and exact pixel dimensions may vary with built-in image generation. The guide appears once after installation rather than after every image.
 
 ## Design principles
 
@@ -71,7 +91,7 @@ The default path is:
 quick ChatGPT-auth check → one generation → minimal PNG sanity check → PATH + inline Markdown
 ```
 
-`plan`, `--dry-run`, `capabilities --json`, `inspect --input`, and detailed JSON remain available for troubleshooting. They are not required before a normal image request.
+Planning, the setup check that does not create an image (`--dry-run`), `capabilities --json`, `inspect --input`, and detailed JSON remain available for troubleshooting. They are not required before a normal image request.
 
 ## Features
 
@@ -166,6 +186,16 @@ A successful bootstrap includes:
     "chatgpt_subscription_login": true,
     "api_environment_forwarded": false,
     "best_practice_pass": true
+  },
+  "getting_started": {
+    "present_in_user_language": true,
+    "common_aspect_ratios": [
+      { "ratio": "1:1" },
+      { "ratio": "16:9" },
+      { "ratio": "9:16" },
+      { "ratio": "4:3" },
+      { "ratio": "3:4" }
+    ]
   }
 }
 ```
@@ -246,13 +276,15 @@ node ./gpt-image/scripts/gpt_image.mjs generate \
   --out "generated-images/combined.png"
 ```
 
-### Optional diagnostics
+### Optional troubleshooting
 
 ```bash
 node ./gpt-image/scripts/gpt_image.mjs doctor --json
+node ./gpt-image/scripts/gpt_image.mjs guide
 node ./gpt-image/scripts/gpt_image.mjs capabilities --json
 node ./gpt-image/scripts/gpt_image.mjs inspect --input "generated-images/combined.png" --json
 node ./gpt-image/scripts/gpt_image.mjs plan --prompt "test" --reference "/path/reference.png" --out "generated-images/test.png" --json
+# Check sign-in and paths without creating an image:
 node ./gpt-image/scripts/gpt_image.mjs generate --prompt "test" --out "generated-images/test.png" --dry-run --json
 ```
 
@@ -282,7 +314,8 @@ node ./gpt-image/scripts/gpt_image.mjs verify-installers --json
 - [x] Exact prompt fidelity with no inferred art direction
 - [x] Stable-path and actual-attachment contract for Claude Code references
 - [x] Last-output-as-edit-target contract for follow-up revisions
-- [x] Direct generation by default; plan, dry-run, and detailed receipts are optional
+- [x] Direct generation by default; planning, no-image setup checks, and detailed receipts are optional
+- [x] One-time, user-language getting-started guide with ratio and quality examples
 - [x] Minimal output validation without generated-image hashes
 - [x] Node.js 22+, macOS, Linux, native Windows, and WSL2 setup guidance
 - [x] Ubuntu, macOS, and Windows CI on Node.js 22 and 24

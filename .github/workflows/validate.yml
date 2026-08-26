@@ -36,8 +36,10 @@ jobs:
           node gpt-image/scripts/validate_skill.mjs
           node gpt-image/scripts/gpt_image.mjs help
 
-      - name: Check prompt fidelity and reference contracts
+      - name: Check first-run guide, prompt fidelity, and reference contracts
         run: |
+          node gpt-image/scripts/gpt_image.mjs guide
+          node -e "const {spawnSync}=require('node:child_process'); const r=spawnSync(process.execPath,['gpt-image/scripts/gpt_image.mjs','guide','--json'],{encoding:'utf8'}); if(r.status!==0) throw new Error(r.stderr); const j=JSON.parse(r.stdout); const ratios=j.common_aspect_ratios.map(x=>x.ratio); if(!j.show_once_after_install || !j.present_in_user_language || !['1:1','16:9','9:16','4:3','3:4'].every(x=>ratios.includes(x))) throw new Error('first-run ratio guide failed'); if(!j.quality_phrases.length || !j.examples.codex || !j.examples.reference) throw new Error('first-run examples failed');"
           node gpt-image/scripts/gpt_image.mjs capabilities --json
           node gpt-image/scripts/gpt_image.mjs inspect --input generated-images/subscription-workflow-smoke.png --json
           node -e "const {spawnSync}=require('node:child_process'); const prompt='KEEP_THIS_PROMPT_EXACTLY: a red circle'; const r=spawnSync(process.execPath,['gpt-image/scripts/gpt_image.mjs','plan','--prompt',prompt,'--reference','generated-images/subscription-workflow-smoke.png','--out','generated-images/ci-fidelity.png','--json'],{encoding:'utf8'}); if(r.status!==0) throw new Error(r.stderr); const j=JSON.parse(r.stdout); const exact='BEGIN USER PROMPT\n'+prompt+'\nEND USER PROMPT'; if(j.prompt!==prompt || !j.bridge_prompt.includes(exact)) throw new Error('prompt fidelity failed'); if(j.bridge_prompt.includes('Requested size or aspect: auto') || j.bridge_prompt.includes('Inspect the generated result')) throw new Error('implicit prompt guidance leaked'); if(j.references.length!==1 || j.attachment_order.length!==1) throw new Error('reference was not attached');"

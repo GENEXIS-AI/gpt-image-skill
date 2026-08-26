@@ -182,4 +182,4 @@ The bridge is ready only when `doctor --json` reports:
 }
 ```
 
-After setup, generate directly. `plan` and `generate --dry-run` are optional diagnostics, not first-use gates. A normal result needs only a workspace-contained usable PNG, its absolute path, and an inline preview. SHA-256 remains relevant to verifying a downloaded installer, not to ordinary generated images.
+After setup, generate directly. Planning and the no-image setup check (`generate --dry-run`) are optional troubleshooting tools, not first-use gates. In user-facing messages, call the latter “a setup check that does not create an image.” A normal result needs only a workspace-contained usable PNG, its absolute path, and an inline preview. SHA-256 remains relevant to verifying a downloaded installer, not to ordinary generated images.

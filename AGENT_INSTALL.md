@@ -44,11 +44,33 @@ node gpt-image/scripts/gpt_image.mjs bootstrap --target all --yes --json
     "chatgpt_subscription_login": true,
     "api_environment_forwarded": false,
     "best_practice_pass": true
+  },
+  "getting_started": {
+    "present_in_user_language": true,
+    "common_aspect_ratios": [
+      { "ratio": "1:1" },
+      { "ratio": "16:9" },
+      { "ratio": "9:16" },
+      { "ratio": "4:3" },
+      { "ratio": "3:4" }
+    ],
+    "examples": {
+      "codex": "$gpt-image Create a cozy reading room at sunset, 16:9, high quality.",
+      "reference": "/gpt-image Use @references/character.png as the character reference and place it in a rainy city, 9:16, high quality."
+    }
   }
 }
 ```
 
-9. Report the persistent clone, both installed host paths, and ChatGPT-subscription auth evidence. Recommend a new agent session if discovery is stale. Do not run a live generation unless the user also requested an image. A plan or generation dry-run is not required for installation success.
+9. Report the persistent clone, both installed host paths, and ChatGPT-subscription auth evidence. Recommend a new agent session if discovery is stale. Do not run a live generation unless the user also requested an image.
+10. Finish with a brief, friendly guide in the user's language. Show it once after installation, not after every image request:
+    - say that setup and ChatGPT sign-in are ready and that no image was generated during setup;
+    - list the common prompt ratios `1:1`, `16:9`, `9:16`, `4:3`, and `3:4`;
+    - explain that users can ask for `draft`, `high quality`, or `high detail, final quality` in ordinary language;
+    - give one simple creation example and one reference or revision example from `getting_started.examples`;
+    - explain that these are natural-language requests and exact pixel dimensions may vary.
+
+Do not use unexplained internal terms such as “dry-run” in the user-facing completion message. If the literal `--dry-run` flag must be discussed during troubleshooting, call it **a setup check that does not create an image**.
 
 After a successful install or first image, an agent may politely say:
 

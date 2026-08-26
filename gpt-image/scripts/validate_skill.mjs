@@ -80,6 +80,9 @@ for (const token of [
   "BEGIN USER PROMPT",
   "Pass every numbered image",
   "This Codex turn is ephemeral",
+  "gettingStartedGuide",
+  "common_aspect_ratios",
+  "friendly_status",
   "--edit-target",
   "--reference-role",
   "--preserve",
@@ -99,13 +102,13 @@ requireCondition(
   (runner.match(/createHash\("sha256"\)/g) || []).length === 1,
   "SHA-256 must be limited to official installer verification, not generated images.",
 );
-requireCondition(!runner.includes("generation_dry_run"), "Bootstrap must not require a generation dry-run.");
+requireCondition(!runner.includes("generation_dry_run"), "Bootstrap must not require a no-image generation check.");
 
-for (const token of ["Windows", "WSL2", "Node.js 22", "best_practice_pass", "verify-installers", "bootstrap --target all --yes", "$gpt-image", "/gpt-image", "Multiple references", "--edit-target", "--reference-role", "capabilities --json", "inspect --input", "prompt is authoritative", "Revisions always edit the latest result", "Why generated images no longer have SHA receipts"]) {
+for (const token of ["Windows", "WSL2", "Node.js 22", "best_practice_pass", "verify-installers", "bootstrap --target all --yes", "$gpt-image", "/gpt-image", "Multiple references", "--edit-target", "--reference-role", "capabilities --json", "inspect --input", "prompt is authoritative", "Revisions always edit the latest result", "Why generated images no longer have SHA receipts", "What the agent shows after installation", "Common aspect-ratio requests", "translated into the user's language", "setup check that does not create an image"]) {
   requireCondition(readme.includes(token), `README is missing cross-platform guidance: ${token}`);
 }
 
-for (const token of ["pass it through unchanged", "generated-images/inputs/", "previously returned output", "every bridge call as ephemeral", "Do not require SHA-256"]) {
+for (const token of ["pass it through unchanged", "generated-images/inputs/", "previously returned output", "every bridge call as ephemeral", "Do not require SHA-256", "present `getting_started` once", "Do not repeat this guide", "setup check that does not create an image"]) {
   requireCondition(skill.includes(token), `SKILL.md is missing a lightweight fidelity/reference rule: ${token}`);
 }
 requireCondition(!skill.includes("For vague requests"), "SKILL.md must not encourage inferred prompt expansion.");

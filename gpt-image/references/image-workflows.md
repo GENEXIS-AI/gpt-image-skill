@@ -99,7 +99,7 @@ For transparent output, `--background transparent` enables a minimal alpha check
 
 ## Optional diagnostics
 
-Normal generation does not require planning or a dry-run. Use them only to debug paths, attachment order, auth, or bridge behavior:
+Normal generation does not require planning or a no-image setup check. Use them only to debug paths, attachment order, sign-in, or bridge behavior. When speaking to the user, describe `--dry-run` as “a setup check that does not create an image”:
 
 ```bash
 node <skill-folder>/scripts/gpt_image.mjs plan --prompt "test" --reference "/path/ref.png" --out "generated-images/test.png" --json

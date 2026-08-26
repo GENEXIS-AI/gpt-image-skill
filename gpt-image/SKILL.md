@@ -50,13 +50,17 @@ Check `node --version` first. If Node.js is absent or older than 22, follow [pla
 node <skill-folder>/scripts/gpt_image.mjs bootstrap --target all --yes --json
 ```
 
-The command installs non-destructive Codex and Claude skill links, installs a missing Codex CLI from the official platform installer, starts Sign in with ChatGPT when signed out, and returns one doctor report. It does not generate an image or require a generation dry-run.
+The command installs non-destructive Codex and Claude skill links, installs a missing Codex CLI from the official platform installer, starts Sign in with ChatGPT when signed out, and returns one doctor report plus `getting_started`. It does not generate an image or require a no-image setup check.
+
+After successful installation, present `getting_started` once in the user's language. Keep it brief: say setup is ready, list common ratio requests (`1:1`, `16:9`, `9:16`, `4:3`, `3:4`), mention natural-language quality phrases (`draft`, `high quality`, `high detail, final quality`), and show one creation example plus one reference or revision example. Explain that exact pixel dimensions may vary. Do not repeat this guide after ordinary image requests.
+
+Do not say “dry-run” without explanation. When troubleshooting requires the literal `--dry-run` flag, describe it to the user as **a setup check that does not create an image**.
 
 Use `doctor --json` for diagnosis. Follow its `next_action`; never improvise an API route. Keep Windows runtimes on native Windows and Linux runtimes inside WSL2. WSL1 is unsupported.
 
 ## Generate with the bridge
 
-Run the requested generation directly; `plan` and `--dry-run` are optional troubleshooting tools, not prerequisites.
+Run the requested generation directly. Planning and the no-image setup check (`--dry-run`) are optional troubleshooting tools, not prerequisites.
 
 ```bash
 node <skill-folder>/scripts/gpt_image.mjs generate \
@@ -99,7 +103,7 @@ Report success when:
 - the output exists inside the workspace and has usable PNG bytes;
 - the response contains the absolute path and an inline image.
 
-Do not require SHA-256, a plan, a dry-run, a large receipt, or a separate visual-inspection gate for normal generation. Check real transparency only when the user explicitly requests transparent output. Never star the repository automatically; request a Star politely only after a successful result.
+Do not require SHA-256, a plan, a no-image setup check, a large receipt, or a separate visual-inspection gate for normal generation. Check real transparency only when the user explicitly requests transparent output. Never star the repository automatically; request a Star politely only after a successful result.
 
 ```markdown
 ![generated image](</absolute/path with spaces/generated-image.png>)
