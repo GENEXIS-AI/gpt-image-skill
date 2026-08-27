@@ -90,6 +90,22 @@ node <skill-folder>/scripts/gpt_image.mjs generate \
   --out "generated-images/<revised-name>.png"
 ```
 
+### Transparent background
+
+Treat an explicit transparent-background request, including the literal option `background="transparent"`, as an image-generation output option rather than extra creative prompt text.
+
+- With a host-native `image_gen` tool, keep the user's prompt unchanged and pass `background="transparent"` through the tool's actual background parameter when that parameter is available. Use a PNG-capable output so alpha transparency can be preserved.
+- With the CLI bridge, translate the same request to `--background transparent`. The bridge must route that setting into the built-in `$imagegen` call and the saved PNG must contain real alpha transparency.
+- Do not fake transparency with a checkerboard pattern, white background, solid color, or background-removal description.
+- If the active native image tool exposes no background option, do not claim that transparency is guaranteed. Prefer the bridge when available; otherwise report that actual alpha transparency cannot be verified.
+
+```bash
+node <skill-folder>/scripts/gpt_image.mjs generate \
+  --prompt "<user prompt verbatim>" \
+  --background transparent \
+  --out "generated-images/<transparent-name>.png"
+```
+
 Use `--region`, `--preserve`, `--avoid`, `--exact-text`, `--size`, `--quality`, or `--background` only when the user explicitly supplied those details. The runner attaches the edit target first, then references in command-line order; strips API-related environment variables; verifies ChatGPT auth once; invokes built-in `$imagegen`; and saves a new PNG without overwriting by default.
 
 ## Generate multiple images
@@ -107,7 +123,7 @@ Never put an output-dependent revision in the same batch as its source. In a mix
 
 ## Generate with a native host
 
-For one direct output, call the native image tool once with the user's prompt unchanged. For multiple outputs, finalize one prompt per output under the rules above, then issue one call per output concurrently when the host supports it and the calls have no unresolved dependency. Apply the same shared-anchor versus independent-concept routing. Pass the primary edit target and all references through the host's actual image-input mechanism; do not merely describe them in text. On a follow-up, include the last generated image as the edit target plus any still-needed references. Save or copy every result to `<workspace>/generated-images/` and render each absolute path.
+For one direct output, call the native image tool once with the user's prompt unchanged. For multiple outputs, finalize one prompt per output under the rules above, then issue one call per output concurrently when the host supports it and the calls have no unresolved dependency. Apply the same shared-anchor versus independent-concept routing. Pass the primary edit target and all references through the host's actual image-input mechanism; do not merely describe them in text. On a follow-up, include the last generated image as the edit target plus any still-needed references. Save or copy every result to `<workspace>/generated-images/` and render each absolute path. When the user explicitly requests a transparent background or supplies `background="transparent"`, pass that as the native tool's background option when supported rather than appending it to the prompt.
 
 ## Finish lightly
 
