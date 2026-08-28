@@ -35,7 +35,7 @@ const CODEX_INSTALLER_URLS = {
 const ALLOWED_INSTALLER_HOSTS = new Set(["chatgpt.com", "releases.openai.com"]);
 const DEFAULT_TIMEOUT_MS = 12 * 60 * 1000;
 const MAX_CAPTURE_BYTES = 24 * 1024 * 1024;
-const CONTRACT_VERSION = 5;
+const CONTRACT_VERSION = 6;
 const DEFAULT_BATCH_CONCURRENCY = 2;
 const MAX_BATCH_CONCURRENCY = 4;
 const IMAGE_MODES = new Set(["auto", "generate", "edit", "variation"]);
@@ -110,12 +110,12 @@ function usage() {
   return `GPT Image Skill — ChatGPT subscription only
 
 Usage:
-  node scripts/gpt_image.mjs bootstrap --yes [--target all|codex|claude] [--json]
-  node scripts/gpt_image.mjs install [--target all|codex|claude] [--dry-run] [--json]
+  node scripts/gpt_image.mjs bootstrap --yes [--target all|codex|claude|antigravity] [--json]
+  node scripts/gpt_image.mjs install [--target all|codex|claude|antigravity] [--dry-run] [--json]
   node scripts/gpt_image.mjs verify-installers [--json]
   node scripts/gpt_image.mjs install-codex --yes
   node scripts/gpt_image.mjs login
-  node scripts/gpt_image.mjs doctor [--json]
+  node scripts/gpt_image.mjs doctor [--target all|codex|claude|antigravity] [--json]
   node scripts/gpt_image.mjs guide [--json]
   node scripts/gpt_image.mjs capabilities [--json]
   node scripts/gpt_image.mjs inspect --input PATH [--require-transparency] [--json]
@@ -136,7 +136,7 @@ Plan and generate options:
   --exact-text TEXT       Exact in-image text, capitalization preserved. Repeatable.
   --quality TEXT          Prompt instruction, e.g. draft or final.
   --size TEXT             Prompt instruction, e.g. square or 1536x1024.
-  --background TEXT       Prompt instruction, e.g. transparent or opaque.
+  --background TEXT       Explicit output constraint, e.g. transparent or opaque.
   --timeout-seconds N     Default: ${DEFAULT_TIMEOUT_MS / 1000}
   --overwrite             Replace the exact output path.
   --dry-run               Generate only: check sign-in and paths without creating an image.
@@ -587,8 +587,10 @@ function gettingStartedGuide() {
     examples: {
       codex: "$gpt-image Create a cozy reading room at sunset, 16:9, high quality.",
       claude: "/gpt-image Create a square product image of a blue glass robot, 1:1, high detail, final quality.",
+      antigravity: "Use the gpt-image skill to create a cinematic mountain observatory at night, 16:9, high quality.",
       reference: "/gpt-image Use @references/character.png as the character reference and place it in a rainy city, 9:16, high quality.",
       revision: "/gpt-image Edit the last image: change only the jacket to red.",
+      transparent: "Use the gpt-image skill to create a flat blue robot app icon with a transparent background, 1:1, high quality.",
     },
     note: "Ratios and quality phrases are natural-language requests, not fixed API presets. Exact pixel dimensions may vary with built-in image generation.",
   };
@@ -609,8 +611,10 @@ function printGettingStartedGuide(guide, asJson) {
   );
   process.stdout.write(`Codex example: ${guide.examples.codex}\n`);
   process.stdout.write(`Claude example: ${guide.examples.claude}\n`);
+  process.stdout.write(`Antigravity example: ${guide.examples.antigravity}\n`);
   process.stdout.write(`Reference example: ${guide.examples.reference}\n`);
   process.stdout.write(`Revision example: ${guide.examples.revision}\n\n`);
+  process.stdout.write(`Transparent-background example: ${guide.examples.transparent}\n\n`);
   process.stdout.write(`${guide.note}\n`);
 }
 
@@ -1004,17 +1008,25 @@ async function installOne(target, dryRun) {
   return { target, status: "installed" };
 }
 
-function selectedTargetLocations(rawTarget, skillName = SKILL_NAME) {
+function normalizeTarget(rawTarget) {
   const target = String(rawTarget || "all").toLowerCase();
-  if (!new Set(["all", "codex", "claude"]).has(target)) {
-    throw new CliError("--target must be all, codex, or claude.", 2);
+  if (!new Set(["all", "codex", "claude", "antigravity"]).has(target)) {
+    throw new CliError("--target must be all, codex, claude, or antigravity.", 2);
   }
+  return target;
+}
+
+function selectedTargetLocations(rawTarget, skillName = SKILL_NAME) {
+  const target = normalizeTarget(rawTarget);
   const locations = [];
   if (target === "all" || target === "codex") {
     locations.push(path.join(os.homedir(), ".agents", "skills", skillName));
   }
   if (target === "all" || target === "claude") {
     locations.push(path.join(os.homedir(), ".claude", "skills", skillName));
+  }
+  if (target === "all" || target === "antigravity") {
+    locations.push(path.join(os.homedir(), ".gemini", "config", "skills", skillName));
   }
   return locations;
 }
@@ -1212,12 +1224,16 @@ async function runLogin(args) {
   printResult(receipt, Boolean(args.json));
 }
 
-async function buildDoctorReport(knownAuth = null) {
+async function buildDoctorReport(knownAuth = null, rawTarget = "all") {
+  const requestedTarget = normalizeTarget(rawTarget);
   const auth = knownAuth || inspectSubscriptionAuth(true);
   const node = nodeRuntime();
   const platform = platformRuntime();
   const codexSkill = await safeTargetState(path.join(os.homedir(), ".agents", "skills", SKILL_NAME));
   const claudeSkill = await safeTargetState(path.join(os.homedir(), ".claude", "skills", SKILL_NAME));
+  const antigravitySkill = await safeTargetState(
+    path.join(os.homedir(), ".gemini", "config", "skills", SKILL_NAME),
+  );
   const legacyCodexSkill = await legacyTargetState(
     path.join(os.homedir(), ".agents", "skills", LEGACY_SKILL_NAME),
   );
@@ -1236,15 +1252,25 @@ async function buildDoctorReport(knownAuth = null) {
     nextAction = "After user approval, run install-codex --yes, open a new shell if needed, then rerun doctor.";
   } else if (auth.verified !== true) {
     nextAction = "Run login and complete Sign in with ChatGPT, then rerun doctor.";
-  } else if (codexSkill.state !== "installed" || claudeSkill.state !== "installed") {
-    nextAction = codexSkill.state === "occupied" || claudeSkill.state === "occupied"
-      ? "Inspect the occupied host skill path. Do not replace it automatically."
-      : "Run install --target all.";
-  } else if (
-    legacyCodexSkill.state === "owned-legacy-link" ||
-    legacyClaudeSkill.state === "owned-legacy-link"
-  ) {
-    nextAction = "Run install --target all once to remove only repository-owned legacy links.";
+  }
+  const selectedSkillStates = [
+    ...(requestedTarget === "all" || requestedTarget === "codex" ? [codexSkill] : []),
+    ...(requestedTarget === "all" || requestedTarget === "claude" ? [claudeSkill] : []),
+    ...(requestedTarget === "all" || requestedTarget === "antigravity" ? [antigravitySkill] : []),
+  ];
+  if (nextAction === "Ready for subscription-backed image generation.") {
+    if (selectedSkillStates.some((item) => item.state !== "installed")) {
+      nextAction = selectedSkillStates.some((item) => item.state === "occupied")
+        ? "Inspect the occupied host skill path. Do not replace it automatically."
+        : `Run install --target ${requestedTarget}.`;
+    } else if (
+      ((requestedTarget === "all" || requestedTarget === "codex") &&
+        legacyCodexSkill.state === "owned-legacy-link") ||
+      ((requestedTarget === "all" || requestedTarget === "claude") &&
+        legacyClaudeSkill.state === "owned-legacy-link")
+    ) {
+      nextAction = `Run install --target ${requestedTarget} once to remove only repository-owned legacy links.`;
+    }
   }
   const checks = {
     platform_supported: platform.supported,
@@ -1252,11 +1278,20 @@ async function buildDoctorReport(knownAuth = null) {
     codex_available: auth.codex.available,
     chatgpt_subscription_login: auth.verified === true,
     api_environment_forwarded: false,
-    codex_skill_installed: codexSkill.state === "installed",
-    claude_skill_installed: claudeSkill.state === "installed",
+    ...(requestedTarget === "all" || requestedTarget === "codex"
+      ? { codex_skill_installed: codexSkill.state === "installed" }
+      : {}),
+    ...(requestedTarget === "all" || requestedTarget === "claude"
+      ? { claude_skill_installed: claudeSkill.state === "installed" }
+      : {}),
+    ...(requestedTarget === "all" || requestedTarget === "antigravity"
+      ? { antigravity_skill_installed: antigravitySkill.state === "installed" }
+      : {}),
     repository_owned_legacy_links_absent:
-      legacyCodexSkill.state !== "owned-legacy-link" &&
-      legacyClaudeSkill.state !== "owned-legacy-link",
+      ((requestedTarget !== "all" && requestedTarget !== "codex") ||
+        legacyCodexSkill.state !== "owned-legacy-link") &&
+      ((requestedTarget !== "all" && requestedTarget !== "claude") ||
+        legacyClaudeSkill.state !== "owned-legacy-link"),
   };
   const bestPracticePass = Object.entries(checks).every(([key, value]) =>
     key === "api_environment_forwarded" ? value === false : value === true,
@@ -1265,6 +1300,7 @@ async function buildDoctorReport(knownAuth = null) {
   const result = {
     ok: runtimeReady,
     ready: runtimeReady,
+    target: requestedTarget,
     platform: platform.platform,
     arch: platform.arch,
     environment: platform.environment,
@@ -1285,6 +1321,10 @@ async function buildDoctorReport(knownAuth = null) {
     codex_installer: installer,
     codex_skill_status: codexSkill.state,
     claude_skill_status: claudeSkill.state,
+    antigravity_skill_status: antigravitySkill.state,
+    codex_skill_installed: codexSkill.state === "installed",
+    claude_skill_installed: claudeSkill.state === "installed",
+    antigravity_skill_installed: antigravitySkill.state === "installed",
     legacy_codex_skill_status: legacyCodexSkill.state,
     legacy_claude_skill_status: legacyClaudeSkill.state,
     best_practice_pass: bestPracticePass,
@@ -1295,7 +1335,7 @@ async function buildDoctorReport(knownAuth = null) {
 }
 
 async function runDoctor(args) {
-  const result = await buildDoctorReport();
+  const result = await buildDoctorReport(null, args.target);
   printResult(result, Boolean(args.json));
   if (!result.ok) process.exitCode = 3;
 }
@@ -1344,7 +1384,7 @@ async function runBootstrap(args) {
 
   // Bootstrap reuses the auth result it already obtained. Explicit `doctor`
   // remains the only setup path that deliberately runs a full diagnostic.
-  const doctor = await buildDoctorReport(auth);
+  const doctor = await buildDoctorReport(auth, args.target);
   const ok = Boolean(doctor.ready && doctor.best_practice_pass);
   if (ok) actions.push("subscription-route-ready");
   const guide = ok ? gettingStartedGuide() : null;
@@ -1362,7 +1402,9 @@ async function runBootstrap(args) {
     login,
     doctor,
     getting_started: guide,
-    next_action: ok ? "Start a new agent session if needed, then invoke $gpt-image or /gpt-image." : doctor.next_action,
+    next_action: ok
+      ? "Start a new agent session if needed, then invoke $gpt-image, /gpt-image, or mention gpt-image in Antigravity."
+      : doctor.next_action,
   };
   printResult(result, Boolean(args.json));
   if (ok && !args.json) {
@@ -1385,6 +1427,23 @@ function capabilityReport() {
       route: "ChatGPT subscription through Codex built-in image_gen",
       images_api: false,
       api_key: false,
+    },
+    hosts: {
+      codex: {
+        skill_path: "~/.agents/skills/gpt-image",
+        invocation: "$gpt-image",
+        generation_route: "native OpenAI image_gen when available, otherwise Codex CLI bridge",
+      },
+      claude_code: {
+        skill_path: "~/.claude/skills/gpt-image",
+        invocation: "/gpt-image",
+        generation_route: "Codex CLI bridge",
+      },
+      antigravity: {
+        skill_path: "~/.gemini/config/skills/gpt-image",
+        invocation: "mention gpt-image in the request",
+        generation_route: "Codex CLI bridge; Antigravity generate_image is not substituted",
+      },
     },
     modes: {
       generate: "Create a new image with zero, one, or multiple visual references.",
@@ -1459,6 +1518,7 @@ function capabilityReport() {
       canvas_area_selection: "Use the ChatGPT Canvas UI when available; the CLI bridge uses --region text.",
       conversation_multi_select: "Use the host UI when available; the CLI bridge accepts ordered local files.",
       claude_pasted_image: "Resolve it to a stable local path before starting the bridge; never silently omit it.",
+      antigravity_conversation_image: "Resolve it to a readable workspace path before starting the bridge; never silently omit it.",
     },
     unsupported_by_design: [
       "OpenAI Images API",
@@ -1537,6 +1597,7 @@ function imageRouteReceipt(options) {
     requested_size: options.size,
     requested_quality: options.quality,
     requested_background: options.background,
+    transparency_validation_required: /transparent|alpha/i.test(options.background),
   };
 }
 

@@ -1,6 +1,6 @@
 # Image and reference workflows
 
-Read this reference for existing images, Claude Code attachments, multiple references, edits, variations, or follow-up revisions.
+Read this reference for existing images, Claude Code or Antigravity attachments, multiple references, edits, variations, or follow-up revisions.
 
 ## Core rule
 
@@ -18,17 +18,17 @@ Keep a direct image or edit prompt unchanged. A request for several **different*
 
 The edit target is attached as Image 1. Supporting references follow in command-line order. PNG, JPEG, and WebP references are accepted.
 
-## Claude Code attachment contract
+## Conversation attachment contract
 
-The nested Codex bridge receives only filesystem paths passed with `-i`. An image visible in Claude's conversation is not automatically attached to the new `codex exec` process.
+The nested Codex bridge receives only filesystem paths passed with `-i`. An image visible in a Claude Code or Antigravity conversation is not automatically attached to the new `codex exec` process.
 
 Resolve inputs in this order:
 
-1. Use an explicit `@path` or local path supplied by the user.
-2. If the current Claude attachment context exposes an exact readable temporary path, copy that exact file non-destructively into `<workspace>/generated-images/inputs/` and use the copied path.
+1. Use an explicit `@path` or local path supplied by the user. In Antigravity, prefer a path inside the active workspace.
+2. If the current host attachment context exposes an exact readable temporary path, copy that exact file non-destructively into `<workspace>/generated-images/inputs/` and use the copied path.
 3. If only a pasted or dragged image is visible and no path is exposed, ask the user to save it inside the project and provide that path.
 
-Do not continue with text-only generation when a requested reference path is unresolved. Do not search for or guess the newest file in `~/.claude/image-cache`; it is session data and may select the wrong or private image. Copy only an exact path that the current attachment context identifies.
+Do not continue with text-only generation when a requested reference path is unresolved. Do not search for or guess the newest file in a host cache such as `~/.claude/image-cache`; it is session data and may select the wrong or private image. Copy only an exact path that the current attachment context identifies.
 
 ## Reference-guided generation
 
@@ -95,7 +95,7 @@ Use these flags only when the user actually supplied the corresponding requireme
 
 Do not manufacture values for these flags. A phrase such as “change only the icon” may be passed verbatim without expanding it into a long inferred preservation list.
 
-For transparent output, `--background transparent` enables a minimal alpha check after generation. Exact text and dense layouts may still need user review, but they do not require an automatic quality gate.
+For transparent output, `--background transparent` carries the explicit background requirement separately from the authoritative image prompt and enables a minimal alpha/transparency check after generation. A checkerboard, white canvas, or solid background is not transparency. Exact text and dense layouts may still need user review, but they do not require an automatic quality gate.
 
 ## Multi-image workflows
 

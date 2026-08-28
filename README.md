@@ -2,7 +2,7 @@
 
 [![Validate skill](https://github.com/GENEXIS-AI/gpt-image-skill/actions/workflows/validate.yml/badge.svg)](https://github.com/GENEXIS-AI/gpt-image-skill/actions/workflows/validate.yml)
 
-Generate and edit GPT images from Codex, Claude Code, or another compatible local agent through the user's **ChatGPT subscription**. Direct prompts stay unchanged; when the user delegates several different designs, the agent develops a distinct image-ready prompt for each concept. Real reference files pass into generation, results stay in the active project, and ready outputs run with bounded parallelism.
+Generate and edit GPT images from Codex, Claude Code, Google Antigravity, or another compatible local agent through the user's **ChatGPT subscription**. Direct prompts stay unchanged; when the user delegates several different designs, the agent develops a distinct image-ready prompt for each concept. Real reference files pass into generation, bridge-produced transparent PNGs are checked for alpha/transparency support, results stay in the active project, and ready outputs run with bounded parallelism.
 
 ```text
 install skill → Sign in with ChatGPT → direct prompt or delegated concept prompts + local image inputs
@@ -18,7 +18,7 @@ install skill → Sign in with ChatGPT → direct prompt or delegated concept pr
 
 ## Install by pasting one prompt into an agent
 
-Paste this into Codex, Claude Code, or another local coding agent:
+Paste this into Codex, Claude Code, Google Antigravity, or another local coding agent:
 
 ```text
 Install and verify GPT Image Skill for the current user from:
@@ -27,7 +27,7 @@ https://github.com/GENEXIS-AI/gpt-image-skill
 
 For this task, I authorize read-only environment checks; a persistent clone or safe fast-forward update;
 user-level installation of missing Git, a supported Node.js 22+ LTS, and Codex CLI;
-creation of the gpt-image links for Codex and Claude Code; and starting Sign in with ChatGPT device authorization.
+creation of the gpt-image links for Codex, Claude Code, and Google Antigravity; and starting Sign in with ChatGPT device authorization.
 
 Read AGENT_INSTALL.md at the repository root and follow it as the one-time installation contract.
 Do not use the Images API, OPENAI_API_KEY, or API-key login. Do not generate a live image yet.
@@ -36,15 +36,15 @@ local changes would be discarded, or existing Codex authentication would need to
 Otherwise, install the required components, run bootstrap --target all --yes --json,
 and continue until bootstrap's consolidated readiness report shows best_practice_pass=true.
 Do not add a separate doctor, plan, inspect, or no-image generation check when bootstrap passes.
-Finally, report the persistent clone path, both installed skill paths, and ChatGPT-auth evidence.
+Finally, report the persistent clone path, all three installed skill paths, and ChatGPT-auth evidence.
 Then give me the brief getting_started guide in my language: common aspect ratios,
-quality phrases, one creation example, and one reference or revision example.
+quality phrases, one creation example, one reference or revision example, and one transparent-background example.
 Do not use unexplained jargon such as "dry-run"; call it a setup check that does not create an image.
 ```
 
 This prompt authorizes ordinary user-level setup without authorizing administrator elevation, destructive changes, replacement of existing authentication, a live generation, or a GitHub Star. The full boundary is in [AGENT_INSTALL.md](./AGENT_INSTALL.md).
 
-After setup, invoke `$gpt-image` in Codex or `/gpt-image` in Claude Code. The host loads the concise skill only for image tasks; it does not need to reread this README on every request.
+After setup, invoke `$gpt-image` in Codex, `/gpt-image` in Claude Code, or mention `gpt-image` in an Antigravity request. Antigravity discovers the global skill automatically from its official skill directory. The host loads the concise skill only for image tasks; it does not need to reread this README on every request.
 
 ## What the agent shows after installation
 
@@ -59,6 +59,7 @@ Quality phrases: draft, high quality, high detail / final quality
 Try:
 $gpt-image Create a cozy reading room at sunset, 16:9, high quality.
 /gpt-image Use @references/character.png as the character reference and place it in a rainy city, 9:16, high quality.
+Use the gpt-image skill to create a flat blue robot app icon with a transparent background, 1:1, high quality.
 ```
 
 These are common natural-language requests, not a fixed API size list. Other framing or dimension requests can be written normally, and exact pixel dimensions may vary with built-in image generation. The guide appears once after installation rather than after every image.
@@ -73,12 +74,12 @@ For one direct image or edit, the skill forwards the user's image request unchan
 
 The bridge requires a readable local PNG, JPEG, or WebP path for each reference. It passes those files into the actual `$imagegen` call. It never replaces an unresolved reference with a text description and continues anyway.
 
-In Claude Code:
+In Claude Code or Antigravity:
 
 - Prefer `@path/to/image.png` or an explicit filesystem path.
-- A pasted or dragged image visible in Claude is not automatically inherited by a nested `codex exec` process.
-- If Claude exposes an exact readable temporary attachment path, the agent copies that exact file into `<project>/generated-images/inputs/` and uses the copy.
-- If Claude exposes no path, save the image inside the project and provide that path before generation.
+- A pasted or dragged image visible in the conversation is not automatically inherited by a nested `codex exec` process.
+- If the host exposes an exact readable temporary attachment path, the agent copies that exact file into `<project>/generated-images/inputs/` and uses the copy.
+- If the host exposes no path, save the image inside the project and provide that path before generation.
 - The skill does not guess from `~/.claude/image-cache`; choosing “the newest image” could select the wrong or private file.
 
 ### 3. Revisions always edit the latest result
@@ -102,9 +103,9 @@ Planning, the setup check that does not create an image (`--dry-run`), `capabili
 ## Features
 
 - Uses Codex's built-in `$imagegen` under **Sign in with ChatGPT**
-- Uses a host-native `image_gen` tool directly when the calling host already exposes one
+- Uses a host-native OpenAI/Codex `image_gen` tool directly only when it is backed by included ChatGPT/Codex usage
 - Blocks `OPENAI_API_KEY`, API-key Codex login, and Images API fallback
-- Installs the same `gpt-image` skill for Codex and Claude Code
+- Installs the same `gpt-image` skill for Codex, Claude Code, and Google Antigravity
 - Preserves direct prompts verbatim and honors delegated multi-concept design work
 - Supports one or multiple references with deterministic attachment order
 - Supports existing-image edits, follow-up revisions, variations, compositing, transparency, exact text, and dense-layout drafts
@@ -134,7 +135,7 @@ The edit target is Image 1. Supporting references follow in command-line order.
 
 - Node.js 22 or newer; the [current supported LTS](https://nodejs.org/en/download) is recommended.
 - Git when installing from GitHub.
-- Codex CLI signed in with ChatGPT, unless the calling host provides native `image_gen`.
+- Codex CLI signed in with ChatGPT, unless the calling host provides subscription-native OpenAI/Codex `image_gen`.
 - A ChatGPT/Codex plan and workspace that permit image generation.
 
 | Environment | Status | Keep together |
@@ -179,9 +180,12 @@ Installed locations:
 
 - Codex: `~/.agents/skills/gpt-image`
 - Claude Code: `~/.claude/skills/gpt-image`
-- Native Windows: `$env:USERPROFILE\.agents\skills\gpt-image` and `$env:USERPROFILE\.claude\skills\gpt-image`
+- Google Antigravity: `~/.gemini/config/skills/gpt-image`
+- Native Windows: `$env:USERPROFILE\.agents\skills\gpt-image`, `$env:USERPROFILE\.claude\skills\gpt-image`, and `$env:USERPROFILE\.gemini\config\skills\gpt-image`
 
 macOS, Linux, and WSL2 use symlinks. Native Windows uses directory junctions. Existing unrelated paths are never replaced.
+
+The Antigravity target is the current global skill location documented for the Antigravity app. For the Antigravity SDK, `skills_paths` may instead point directly to the repository's `gpt-image` directory. Image generation still runs through the ChatGPT-authenticated Codex bridge; the skill deliberately does not substitute Antigravity's provider-native `generate_image` tool.
 
 A successful bootstrap includes:
 
@@ -195,6 +199,9 @@ A successful bootstrap includes:
     "codex_available": true,
     "chatgpt_subscription_login": true,
     "api_environment_forwarded": false,
+    "codex_skill_installed": true,
+    "claude_skill_installed": true,
+    "antigravity_skill_installed": true,
     "best_practice_pass": true
   },
   "getting_started": {
@@ -226,6 +233,12 @@ Claude Code:
 /gpt-image A cobalt-blue glass robot on a warm off-white background.
 ```
 
+Google Antigravity:
+
+```text
+Use the gpt-image skill to create a cobalt-blue glass robot on a warm off-white background.
+```
+
 Direct runner:
 
 ```bash
@@ -234,12 +247,37 @@ node ./gpt-image/scripts/gpt_image.mjs generate \
   --out "generated-images/glass-robot.png"
 ```
 
+### Transparent background
+
+Ask for transparency naturally in any supported host:
+
+```text
+Use the gpt-image skill to create a flat cobalt-blue robot app icon with a transparent background, 1:1, high quality.
+```
+
+The agent keeps the creative prompt authoritative and routes transparency separately. With the bridge, the explicit runner form is:
+
+```bash
+node ./gpt-image/scripts/gpt_image.mjs generate \
+  --prompt "Create a flat cobalt-blue robot app icon, 1:1, high quality." \
+  --background transparent \
+  --out "generated-images/robot-icon-transparent.png"
+```
+
+Transparent output must be a PNG with an alpha channel or PNG transparency chunk. The runner rejects an opaque PNG when `--background transparent` was requested. A checkerboard pattern, white canvas, or solid-color background is not treated as transparency. If a subscription-native host tool has no real background control, the skill uses the bridge when available instead of claiming transparency it cannot verify.
+
 ### Reference-guided generation
 
 In Claude Code, give the skill a stable path:
 
 ```text
 /gpt-image Use @references/robot.png as the character reference. Draw it riding a bicycle.
+```
+
+In Antigravity, use an explicit readable workspace path:
+
+```text
+Use the gpt-image skill with references/robot.png as the character reference. Draw it riding a bicycle.
 ```
 
 Direct runner:
@@ -376,6 +414,8 @@ node ./gpt-image/scripts/gpt_image.mjs verify-installers --json
 - [x] Concise `SKILL.md` with task-specific references loaded only when needed
 - [x] Exact prompt fidelity with no inferred art direction
 - [x] Stable-path and actual-attachment contract for Claude Code references
+- [x] Google Antigravity global discovery with the ChatGPT-authenticated Codex bridge, not provider substitution
+- [x] Transparent-background routing plus PNG alpha/transparency validation on the bridge path
 - [x] Last-output-as-edit-target contract for follow-up revisions
 - [x] Direct generation by default; planning, no-image setup checks, and detailed receipts are optional
 - [x] Shared-anchor variations and independent concepts use bounded parallel batches; one auth check and zero diagnostic gates per job
@@ -426,6 +466,8 @@ Official references:
 - [OpenAI: Image inputs](https://learn.chatgpt.com/docs/image-inputs)
 - [OpenAI: Build skills](https://learn.chatgpt.com/docs/build-skills)
 - [Claude Code: Work with images](https://code.claude.com/docs/en/tutorials)
+- [Google Antigravity: Agent Skills](https://antigravity.google/docs/skills/)
+- [Google Antigravity SDK: Tools and skills](https://antigravity.google/docs/sdk/tools/)
 
 ## Star the project
 

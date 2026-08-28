@@ -12,7 +12,7 @@ Read this reference only when Node.js, Git, Codex CLI, PATH, or OS compatibility
 | WSL2 | WSL Linux home and Linux paths | `https://chatgpt.com/codex/install.sh` | Install everything inside WSL2 and prefer `~/...`, not `/mnt/c/...`. |
 | WSL1 | Not supported | Do not install for this route | Current Codex no longer supports WSL1; migrate to WSL2 or use native Windows. |
 
-Do not mix a Windows `node.exe` with a WSL clone, or a WSL Codex binary with a native Windows Claude Code session. The calling agent, Node runtime, Codex CLI, skill links, workspace, and generated output must belong to the same environment.
+Do not mix a Windows `node.exe` with a WSL clone, or a WSL Codex binary with a native Windows Claude Code or Antigravity session. The calling agent, Node runtime, Codex CLI, skill links, workspace, and generated output must belong to the same environment.
 
 ## Stage 0: inspect before changing the machine
 
@@ -107,7 +107,10 @@ Windows host paths resolve under `%USERPROFILE%`:
 ```powershell
 Get-Item "$env:USERPROFILE\.agents\skills\gpt-image"
 Get-Item "$env:USERPROFILE\.claude\skills\gpt-image"
+Get-Item "$env:USERPROFILE\.gemini\config\skills\gpt-image"
 ```
+
+The third path is Google Antigravity's documented global skill directory. Antigravity loads the skill instructions there, but image generation still runs through the ChatGPT-authenticated Codex CLI bridge. Do not replace that route with Antigravity's built-in `generate_image` tool.
 
 ## Stage 4: install Codex CLI when missing
 
@@ -164,7 +167,7 @@ If an installer succeeds but `doctor` still cannot find a command:
 1. Close and reopen the terminal or agent host.
 2. Run `node --version`, `git --version`, and `codex --version` in that same terminal.
 3. On WSL2, confirm the paths are Linux paths and `echo $WSL_DISTRO_NAME` is non-empty.
-4. Restart Codex or Claude Code after first skill installation if its skill list is stale.
+4. Restart Codex, Claude Code, or Google Antigravity after first skill installation if its skill list is stale.
 5. Do not work around PATH failure by invoking an API endpoint.
 
 ## Setup completion checks
@@ -178,6 +181,9 @@ The bridge is ready only when `doctor --json` reports:
   "codex_available": true,
   "chatgpt_subscription_login": true,
   "api_environment_forwarded": false,
+  "codex_skill_installed": true,
+  "claude_skill_installed": true,
+  "antigravity_skill_installed": true,
   "best_practice_pass": true
 }
 ```

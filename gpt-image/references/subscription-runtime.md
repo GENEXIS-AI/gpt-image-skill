@@ -6,7 +6,7 @@ Read this reference only for installation, authentication, backend diagnosis, or
 
 ```text
 Agent Skill
-  -> native image_gen when available, otherwise installed Codex CLI
+  -> subscription-native OpenAI/Codex image_gen when available, otherwise installed Codex CLI
   -> Sign in with ChatGPT
   -> codex exec
   -> built-in $imagegen / image_gen
@@ -15,6 +15,8 @@ Agent Skill
 ```
 
 This skill has no Images API route. It removes `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`, and `CODEX_ACCESS_TOKEN` from the child environment before every Codex diagnostic, login, and generation command.
+
+Google Antigravity exposes its own provider-native `generate_image` tool, but this skill does not use that route. In Antigravity it always invokes the Codex CLI bridge so the image is generated through the user's ChatGPT/Codex included usage rather than silently changing providers.
 
 ## Why Codex CLI is the bridge
 
@@ -31,6 +33,8 @@ Official references:
 - Codex CLI: https://learn.chatgpt.com/docs/codex/cli
 - Codex SDK: https://learn.chatgpt.com/docs/codex-sdk
 - Codex App Server: https://learn.chatgpt.com/docs/app-server
+- Google Antigravity skills: https://antigravity.google/docs/skills/
+- Google Antigravity SDK tools and `skills_paths`: https://antigravity.google/docs/sdk/tools/
 
 ## Installation
 
@@ -63,6 +67,7 @@ If an API-key login is detected, block generation. Do not automatically log out 
 
 - Codex discovers the skill at `~/.agents/skills/gpt-image` and invokes it as `$gpt-image`.
 - Claude Code discovers the skill at `~/.claude/skills/gpt-image` and invokes it as `/gpt-image`.
+- Google Antigravity discovers the global skill at `~/.gemini/config/skills/gpt-image`. Mention `gpt-image` in the request; Antigravity loads relevant skills automatically. An Antigravity SDK configuration may instead include the repository's `gpt-image` directory in `skills_paths`.
 - On native Windows, `~` means the Windows user profile and the installer creates directory junctions. On WSL2, `~` is the Linux home and the links must stay inside WSL2.
 - Restart or start a new session after first installation if the host does not refresh its skill list.
 
@@ -70,4 +75,4 @@ If an API-key login is detected, block generation. Do not automatically log out 
 
 Image generation is not free of limits: it consumes the user's included Codex/ChatGPT allowance, and official documentation says image generations use included limits 3–5 times faster on average than similar turns without image generation, depending on quality and size. Every parallel job counts separately. It does not create a separately billed Images API request because this skill never calls that API and strips API-key environment variables from the Codex child process.
 
-The subscription bridge exposes built-in generation and editing through natural-language image instructions, not Images API parameters. It forwards each finalized image prompt unchanged and uses separate routing metadata only to attach the requested local files. A direct request remains the user's prompt; when the user delegates several different concepts, the calling agent develops the distinct per-output prompts before invoking the bridge. Its runner supports new images, a primary edit target, single or multiple ordered references, spatial edits, explicit preservation and avoid lists, variations, transparent-background requests, exact text, and one final PNG per invocation. `batch` coordinates every invocation whose inputs already exist, including jobs that share a read-only anchor; dependent revisions stay sequential. ChatGPT Canvas area selection and conversation multi-select remain host UI features; CLI sessions express those intents with `--region` and ordered local inputs only when the user asks for them.
+The subscription bridge exposes built-in generation and editing through natural-language image instructions, not Images API parameters. It forwards each finalized image prompt unchanged and uses separate routing metadata only to attach requested local files and carry explicit options. A direct request remains the user's prompt; when the user delegates several different concepts, the calling agent develops the distinct per-output prompts before invoking the bridge. Its runner supports new images, a primary edit target, single or multiple ordered references, spatial edits, explicit preservation and avoid lists, variations, transparent-background requests, exact text, and one final PNG per invocation. For `--background transparent`, it passes the user-supplied setting as an operational constraint and then rejects a PNG with no alpha channel or transparency chunk. `batch` coordinates every invocation whose inputs already exist, including jobs that share a read-only anchor; dependent revisions stay sequential. ChatGPT Canvas area selection and conversation multi-select remain host UI features; CLI sessions express those intents with `--region` and ordered local inputs only when the user asks for them.

@@ -9,7 +9,7 @@ When the user pastes the README's recommended installer prompt, that prompt auth
 - read-only OS, architecture, WSL, Node.js, Git, Codex CLI, auth-status, and target-path checks;
 - user-level installation of missing Git, Node.js 22+ supported LTS, and Codex CLI;
 - a persistent clone or fast-forward update of the exact requested repository;
-- non-destructive `gpt-image` links for Codex and Claude Code;
+- non-destructive `gpt-image` links for Codex, Claude Code, and Google Antigravity;
 - starting Codex **Sign in with ChatGPT** device authorization.
 
 It does not authorize administrator elevation, deleting or replacing unrelated paths, discarding local repository changes, replacing existing API-key authentication, reading credentials, creating a separately billed API request, generating a live image, or starring the repository. Pause only for one of those boundaries or when no safe supported installer exists.
@@ -45,6 +45,9 @@ These are one-time installation checks, not image-generation gates. `bootstrap` 
     "codex_available": true,
     "chatgpt_subscription_login": true,
     "api_environment_forwarded": false,
+    "codex_skill_installed": true,
+    "claude_skill_installed": true,
+    "antigravity_skill_installed": true,
     "best_practice_pass": true
   },
   "getting_started": {
@@ -58,18 +61,20 @@ These are one-time installation checks, not image-generation gates. `bootstrap` 
     ],
     "examples": {
       "codex": "$gpt-image Create a cozy reading room at sunset, 16:9, high quality.",
-      "reference": "/gpt-image Use @references/character.png as the character reference and place it in a rainy city, 9:16, high quality."
+      "reference": "/gpt-image Use @references/character.png as the character reference and place it in a rainy city, 9:16, high quality.",
+      "antigravity": "Use the gpt-image skill to create a cinematic mountain observatory at night, 16:9, high quality.",
+      "transparent": "Use the gpt-image skill to create a flat blue robot app icon with a transparent background, 1:1, high quality."
     }
   }
 }
 ```
 
-9. Report the persistent clone, both installed host paths, and ChatGPT-subscription auth evidence. Recommend a new agent session if discovery is stale. Do not run a live generation unless the user also requested an image.
+9. Report the persistent clone, all three installed host paths, and ChatGPT-subscription auth evidence. Recommend a new agent session if discovery is stale. For Antigravity, report `~/.gemini/config/skills/gpt-image` (or its native Windows equivalent) and say that generation uses the Codex bridge rather than Antigravity's built-in `generate_image`. Do not run a live generation unless the user also requested an image.
 10. Finish with a brief, friendly guide in the user's language. Show it once after installation, not after every image request:
     - say that setup and ChatGPT sign-in are ready and that no image was generated during setup;
     - list the common prompt ratios `1:1`, `16:9`, `9:16`, `4:3`, and `3:4`;
     - explain that users can ask for `draft`, `high quality`, or `high detail, final quality` in ordinary language;
-    - give one simple creation example and one reference or revision example from `getting_started.examples`;
+    - give one simple creation example, one reference or revision example, and the transparent-background example from `getting_started.examples`; if Antigravity is the installing host, use the Antigravity creation example;
     - explain that these are natural-language requests and exact pixel dimensions may vary.
 
 Do not use unexplained internal terms such as “dry-run” in the user-facing completion message. If the literal `--dry-run` flag must be discussed during troubleshooting, call it **a setup check that does not create an image**.

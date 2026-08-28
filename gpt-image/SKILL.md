@@ -1,6 +1,6 @@
 ---
 name: gpt-image
-description: Generate or edit raster images through the user's ChatGPT subscription and save or preview workspace PNGs. Use for text-to-image, local-reference generation, edits, follow-up revisions, variants, multi-image batches, or subscription-backed setup in Codex, Claude Code, and compatible local agents. Preserve direct prompts verbatim; develop distinct per-output prompts when the user delegates multiple concepts. Attach actual reference files. Prefer host-native image_gen; otherwise use Codex CLI with ChatGPT sign-in. Never use the Images API, OPENAI_API_KEY, or API-key login.
+description: Generate or edit raster images through the user's ChatGPT subscription and save or preview workspace PNGs. Use for text-to-image, local-reference generation, edits, follow-up revisions, transparent PNGs, variants, multi-image batches, or subscription-backed setup in Codex, Claude Code, Google Antigravity, and compatible local agents. Preserve direct prompts verbatim; develop distinct per-output prompts when the user delegates multiple concepts. Attach actual reference files. Use subscription-native OpenAI image_gen when available; otherwise use Codex CLI with ChatGPT sign-in. Never use the Images API, OPENAI_API_KEY, API-key login, or a different provider's image generator.
 ---
 
 # GPT Image Skill
@@ -17,10 +17,11 @@ Generate or edit one or more raster images, save results under the current works
 
 ## Choose the route
 
-1. Use the host's `image_gen` tool directly when it is available. Do not install Node.js or start nested Codex in that case.
-2. Otherwise use `scripts/gpt_image.mjs`. Claude Code and generic local agents need Node.js 22+, Codex CLI, and Sign in with ChatGPT in the same OS environment.
+1. Use a host-native OpenAI/Codex `image_gen` tool directly only when it is backed by the user's included ChatGPT/Codex usage. Do not install Node.js or start nested Codex in that case.
+2. Otherwise use `scripts/gpt_image.mjs`. Claude Code, Google Antigravity, and generic local agents need Node.js 22+, Codex CLI, and Sign in with ChatGPT in the same OS environment.
+3. In Antigravity, do not substitute its built-in `generate_image` tool. That is a different provider route and does not satisfy this skill's GPT Image through ChatGPT-subscription contract. Run the Codex CLI bridge instead.
 
-Read [image-workflows.md](references/image-workflows.md) for references, Claude attachments, edits, follow-up revisions, or multiple images. Read [subscription-runtime.md](references/subscription-runtime.md) for authentication or architecture. Read [platform-setup.md](references/platform-setup.md) only when setup is missing or uncertain.
+Read [image-workflows.md](references/image-workflows.md) for references, conversation attachments, edits, follow-up revisions, or multiple images. Read [subscription-runtime.md](references/subscription-runtime.md) for authentication or architecture. Read [platform-setup.md](references/platform-setup.md) only when setup is missing or uncertain.
 
 ## Preserve the user's request
 
@@ -35,8 +36,8 @@ Read [image-workflows.md](references/image-workflows.md) for references, Claude 
 ## Resolve references before generation
 
 - Require a real, readable local path for every bridge reference and edit target.
-- In Claude Code, prefer an explicit `@path` or filesystem path. If the attachment context exposes an exact readable temporary path, copy that exact file non-destructively into `<workspace>/generated-images/inputs/` and use the copy. If Claude can see the image but exposes no path, stop before generation and ask the user to save it in the workspace and provide that path.
-- Never silently omit an unresolved image, replace it with a text description, or guess a file from `~/.claude/image-cache`.
+- In Claude Code, prefer an explicit `@path` or filesystem path. In Antigravity, prefer an explicit workspace path. If the current attachment context exposes an exact readable temporary path, copy that exact file non-destructively into `<workspace>/generated-images/inputs/` and use the copy. If the host can see the image but exposes no path, stop before generation and ask the user to save it in the workspace and provide that path.
+- Never silently omit an unresolved image, replace it with a text description, or guess a file from a host cache such as `~/.claude/image-cache`.
 - Use `--reference` when an image guides a new image. Use `--edit-target` when that exact image must be changed.
 - For a follow-up such as “change the last result,” use the previously returned output as the new `--edit-target`. Do not reuse the original source by mistake.
 - Treat every bridge call as ephemeral. Reattach the current edit target and every still-needed reference on every revision.
@@ -52,9 +53,9 @@ Check `node --version` first. If Node.js is absent or older than 22, follow [pla
 node <skill-folder>/scripts/gpt_image.mjs bootstrap --target all --yes --json
 ```
 
-The command installs non-destructive Codex and Claude skill links, installs a missing Codex CLI from the official platform installer, starts Sign in with ChatGPT when signed out, and returns one consolidated readiness report plus `getting_started`. It reuses the auth result already obtained during setup rather than running a second diagnostic pass. It does not generate an image or require a no-image setup check.
+The command installs non-destructive Codex, Claude Code, and Antigravity skill links, installs a missing Codex CLI from the official platform installer, starts Sign in with ChatGPT when signed out, and returns one consolidated readiness report plus `getting_started`. It reuses the auth result already obtained during setup rather than running a second diagnostic pass. It does not generate an image or require a no-image setup check.
 
-After successful installation, present `getting_started` once in the user's language. Keep it brief: say setup is ready, list common ratio requests (`1:1`, `16:9`, `9:16`, `4:3`, `3:4`), mention natural-language quality phrases (`draft`, `high quality`, `high detail, final quality`), and show one creation example plus one reference or revision example. Explain that exact pixel dimensions may vary. Do not repeat this guide after ordinary image requests.
+After successful installation, present `getting_started` once in the user's language. Keep it brief: say setup is ready, list common ratio requests (`1:1`, `16:9`, `9:16`, `4:3`, `3:4`), mention natural-language quality phrases (`draft`, `high quality`, `high detail, final quality`), and show one creation example, one reference or revision example, and one transparent-background example. Explain that exact pixel dimensions may vary. Do not repeat this guide after ordinary image requests.
 
 Do not say “dry-run” without explanation. When troubleshooting requires the literal `--dry-run` flag, describe it to the user as **a setup check that does not create an image**.
 
@@ -95,7 +96,7 @@ node <skill-folder>/scripts/gpt_image.mjs generate \
 Treat an explicit transparent-background request, including the literal option `background="transparent"`, as an image-generation output option rather than extra creative prompt text.
 
 - With a host-native `image_gen` tool, keep the user's prompt unchanged and pass `background="transparent"` through the tool's actual background parameter when that parameter is available. Use a PNG-capable output so alpha transparency can be preserved.
-- With the CLI bridge, translate the same request to `--background transparent`. The bridge must route that setting into the built-in `$imagegen` call and the saved PNG must contain real alpha transparency.
+- With the CLI bridge, translate the same request to `--background transparent`. The bridge sends it as an explicit operational constraint to the built-in `$imagegen` turn and rejects the result if the saved PNG contains no alpha channel or transparency chunk.
 - Do not fake transparency with a checkerboard pattern, white background, solid color, or background-removal description.
 - If the active native image tool exposes no background option, do not claim that transparency is guaranteed. Prefer the bridge when available; otherwise report that actual alpha transparency cannot be verified.
 
@@ -121,15 +122,15 @@ Classify the request once without running a planning command:
 
 Never put an output-dependent revision in the same batch as its source. In a mixed request, batch all currently ready jobs, resolve the dependency, then batch the newly ready jobs. The default concurrency is 2 and the maximum is 4. A batch checks ChatGPT auth once and does not run Doctor, planning, inspection, or retries per job. If a limit rejects a job, report it without switching to an API route. Use `--check-only` only when the user requests a precheck or the manifest fails; describe it as **checking the batch without creating images**.
 
-## Generate with a native host
+## Generate with a subscription-native host
 
-For one direct output, call the native image tool once with the user's prompt unchanged. For multiple outputs, finalize one prompt per output under the rules above, then issue one call per output concurrently when the host supports it and the calls have no unresolved dependency. Apply the same shared-anchor versus independent-concept routing. Pass the primary edit target and all references through the host's actual image-input mechanism; do not merely describe them in text. On a follow-up, include the last generated image as the edit target plus any still-needed references. Save or copy every result to `<workspace>/generated-images/` and render each absolute path. When the user explicitly requests a transparent background or supplies `background="transparent"`, pass that as the native tool's background option when supported rather than appending it to the prompt.
+For one direct output, call the subscription-native OpenAI/Codex image tool once with the user's prompt unchanged. For multiple outputs, finalize one prompt per output under the rules above, then issue one call per output concurrently when the host supports it and the calls have no unresolved dependency. Apply the same shared-anchor versus independent-concept routing. Pass the primary edit target and all references through the host's actual image-input mechanism; do not merely describe them in text. On a follow-up, include the last generated image as the edit target plus any still-needed references. Save or copy every result to `<workspace>/generated-images/` and render each absolute path. When the user explicitly requests a transparent background or supplies `background="transparent"`, pass that as the native tool's background option when supported rather than appending it to the prompt. Antigravity must use the bridge described above, not this native-host branch.
 
 ## Finish lightly
 
 Report success when:
 
-- generation used native `image_gen` or the ChatGPT-authenticated Codex bridge;
+- generation used subscription-native OpenAI/Codex `image_gen` or the ChatGPT-authenticated Codex bridge;
 - every requested reference was actually attached;
 - every output exists inside the workspace and has usable PNG bytes;
 - the response contains each absolute path and inline image.
