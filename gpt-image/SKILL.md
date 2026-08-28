@@ -65,11 +65,15 @@ Use `doctor --json` for diagnosis. Follow its `next_action`; never improvise an 
 
 Run the requested generation directly. Do not run `doctor`, `plan`, `inspect`, `capabilities`, or the no-image setup check (`--dry-run`) first unless the user asks or a real error needs diagnosis.
 
+The runner's default `auto` policy does not pin a Codex model name or embed a model list. It lets Codex select a current model available to the signed-in account and requests CLI `low` reasoning (Light in the app) for the already-finalized `$imagegen` routing task. The built-in image renderer is also unpinned so service updates do not require a skill edit. Do not pin or raise the orchestrator model merely to improve visual rendering quality. The runner must not run model discovery, a fallback turn, an image-generation retry, or a retry for usage-limit or plan restrictions. Never promise that lower reasoning unlocks a restricted plan; check current official Codex pricing when eligibility matters, and never route around a restriction with an API.
+
 ```bash
 node <skill-folder>/scripts/gpt_image.mjs generate \
   --prompt "<user prompt verbatim>" \
   --out "generated-images/<descriptive-name>.png"
 ```
+
+Use the default model policy unless the user explicitly asks otherwise. `--orchestrator-model account-default` leaves both model and reasoning at Codex defaults. An explicit current model ID may be paired with `--orchestrator-effort <current-level>`; do not maintain or infer a model allowlist inside the skill.
 
 For reference-guided generation, repeat `--reference`. Add `--reference-role` only when the user states a relationship that is not already clear in the prompt.
 
@@ -120,7 +124,7 @@ Classify the request once without running a planning command:
 - **Repeated renders:** when the user requests several images but does not ask for different concepts—or explicitly says to use the same prompt—reuse the exact image prompt for each independent job.
 - **No anchor yet:** generate the first requested output normally, then use that returned image as the shared anchor for the remaining parallel jobs. Do not generate an extra hidden anchor that the user did not request.
 
-Never put an output-dependent revision in the same batch as its source. In a mixed request, batch all currently ready jobs, resolve the dependency, then batch the newly ready jobs. The default concurrency is 2 and the maximum is 4. A batch checks ChatGPT auth once and does not run Doctor, planning, inspection, or retries per job. If a limit rejects a job, report it without switching to an API route. Use `--check-only` only when the user requests a precheck or the manifest fails; describe it as **checking the batch without creating images**.
+Never put an output-dependent revision in the same batch as its source. In a mixed request, batch all currently ready jobs, resolve the dependency, then batch the newly ready jobs. The default concurrency is 2 and the maximum is 4. A batch checks ChatGPT auth once and does not run Doctor, planning, inspection, model discovery, fallback turns, or image-generation retries per job. If a limit rejects a job, report it without switching to an API route. Use `--check-only` only when the user requests a precheck or the manifest fails; describe it as **checking the batch without creating images**.
 
 ## Generate with a subscription-native host
 

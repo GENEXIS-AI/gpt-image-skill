@@ -124,7 +124,16 @@ for (const token of [
   "delegated_concept_prompts",
   "ordinal_metadata_in_prompts",
   "output_dependencies_in_same_batch",
-  'const CONTRACT_VERSION = 6',
+  'const CONTRACT_VERSION = 7',
+  'const DEFAULT_ORCHESTRATOR_EFFORT = "low"',
+  "model_reasoning_effort",
+  "explicitFreePlanImageRejection",
+  "orchestrator_model_policy",
+  "orchestrator_model_pinned",
+  "renderer_model_pinned",
+  "model_catalog_embedded",
+  "codex-selected-current",
+  "plan_entitlement_preflight",
   '"antigravity"',
   '".gemini", "config", "skills"',
   "Antigravity generate_image is not substituted",
@@ -135,6 +144,8 @@ for (const token of [
 
 requireCondition(!runner.includes("https://api.openai.com"), "Runner must not contain an OpenAI API endpoint.");
 requireCondition(!runner.includes("/v1/images"), "Runner must not contain an Images API endpoint.");
+requireCondition(!runner.includes("const DEFAULT_ORCHESTRATOR_MODEL"), "Runner must not pin a default Codex model ID.");
+requireCondition(!runner.includes("const IMAGE_RENDERER_MODEL"), "Runner must not pin an underlying image renderer model.");
 requireCondition(!runner.includes('readFile(path.join(os.homedir(), ".codex", "auth.json"'), "Runner must not read auth.json.");
 requireCondition(
   (runner.match(/createHash\("sha256"\)/g) || []).length === 1,
@@ -142,11 +153,11 @@ requireCondition(
 );
 requireCondition(!runner.includes("generation_dry_run"), "Bootstrap must not require a no-image generation check.");
 
-for (const token of ["Windows", "WSL2", "Node.js 22", "best_practice_pass", "verify-installers", "bootstrap --target all --yes", "$gpt-image", "/gpt-image", "Google Antigravity", "~/.gemini/config/skills/gpt-image", "Antigravity's provider-native `generate_image`", "Transparent background", "--background transparent", "alpha channel", "Multiple references", "--edit-target", "--reference-role", "capabilities --json", "inspect --input", "prompt is authoritative", "delegated creative intent", "Revisions always edit the latest result", "Why generated images no longer have SHA receipts", "What the agent shows after installation", "Common aspect-ratio requests", "translated into the user's language", "setup check that does not create an image", "Parallel multiple images", "Shared-anchor variations", "Delegated concepts", "Repeated renders", "batch --manifest", "--check-only", "one auth check", "zero diagnostic gates per job"]) {
+for (const token of ["Windows", "WSL2", "Node.js 22", "best_practice_pass", "verify-installers", "bootstrap --target all --yes", "$gpt-image", "/gpt-image", "Google Antigravity", "~/.gemini/config/skills/gpt-image", "Antigravity's provider-native `generate_image`", "Transparent background", "--background transparent", "alpha channel", "Multiple references", "--edit-target", "--reference-role", "capabilities --json", "inspect --input", "prompt is authoritative", "delegated creative intent", "Revisions always edit the latest result", "Why generated images no longer have SHA receipts", "What the agent shows after installation", "Common aspect-ratio requests", "translated into the user's language", "setup check that does not create an image", "Parallel multiple images", "Shared-anchor variations", "Delegated concepts", "Repeated renders", "batch --manifest", "--check-only", "one auth check", "zero diagnostic gates per job", "The model stays current; reasoning stays light", "not available on the Free plan", "--orchestrator-model account-default", "<current-codex-model-id>", "does **not** pin", "Codex pricing"]) {
   requireCondition(readme.includes(token), `README is missing cross-platform guidance: ${token}`);
 }
 
-for (const token of ["pass it through unchanged", "generated-images/inputs/", "previously returned output", "every bridge call as ephemeral", "Do not require SHA-256", "present `getting_started` once", "Do not repeat this guide", "setup check that does not create an image", "Do not run `doctor`, `plan`, `inspect`, `capabilities`", "Google Antigravity", "do not substitute its built-in `generate_image`", "--background transparent", "alpha channel or transparency chunk", "A batch checks ChatGPT auth once", "Same design, different styles", "meaningfully different", "Never append ordinal", "Repeated renders", "Do not generate an extra hidden anchor", "Never put an output-dependent revision in the same batch as its source"]) {
+for (const token of ["pass it through unchanged", "generated-images/inputs/", "previously returned output", "every bridge call as ephemeral", "Do not require SHA-256", "present `getting_started` once", "Do not repeat this guide", "setup check that does not create an image", "Do not run `doctor`, `plan`, `inspect`, `capabilities`", "Google Antigravity", "do not substitute its built-in `generate_image`", "--background transparent", "alpha channel or transparency chunk", "A batch checks ChatGPT auth once", "Same design, different styles", "meaningfully different", "Never append ordinal", "Repeated renders", "Do not generate an extra hidden anchor", "Never put an output-dependent revision in the same batch as its source", "does not pin a Codex model name", "built-in image renderer is also unpinned", "Never promise that lower reasoning unlocks", "--orchestrator-model account-default", "must not run model discovery", "do not maintain or infer a model allowlist"]) {
   requireCondition(skill.includes(token), `SKILL.md is missing a lightweight fidelity/reference rule: ${token}`);
 }
 requireCondition(!skill.includes("For vague requests"), "SKILL.md must not encourage inferred prompt expansion.");

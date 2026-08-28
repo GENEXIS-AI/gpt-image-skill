@@ -69,12 +69,13 @@ These are one-time installation checks, not image-generation gates. `bootstrap` 
 }
 ```
 
-9. Report the persistent clone, all three installed host paths, and ChatGPT-subscription auth evidence. Recommend a new agent session if discovery is stale. For Antigravity, report `~/.gemini/config/skills/gpt-image` (or its native Windows equivalent) and say that generation uses the Codex bridge rather than Antigravity's built-in `generate_image`. Do not run a live generation unless the user also requested an image.
+9. Report the persistent clone, all three installed host paths, and ChatGPT-subscription auth evidence. Recommend a new agent session if discovery is stale. For Antigravity, report `~/.gemini/config/skills/gpt-image` (or its native Windows equivalent) and say that generation uses the Codex bridge rather than Antigravity's built-in `generate_image`. Explain that the CLI bridge leaves the changing Codex model catalog unpinned and requests Low reasoning from a current account-available model; the built-in image renderer is also unpinned. A successful setup receipt proves installation and sign-in, not plan entitlement. Do not claim that lower reasoning unlocks a restricted plan; check current official Codex pricing when the user asks about eligibility. Do not run a live generation unless the user also requested an image.
 10. Finish with a brief, friendly guide in the user's language. Show it once after installation, not after every image request:
     - say that setup and ChatGPT sign-in are ready and that no image was generated during setup;
     - list the common prompt ratios `1:1`, `16:9`, `9:16`, `4:3`, and `3:4`;
     - explain that users can ask for `draft`, `high quality`, or `high detail, final quality` in ordinary language;
     - give one simple creation example, one reference or revision example, and the transparent-background example from `getting_started.examples`; if Antigravity is the installing host, use the Antigravity creation example;
+    - briefly relay `runtime_note` and `eligibility_note`: no model ID is pinned, Low reasoning is requested, setup does not prove plan entitlement, and the skill never bypasses current plan restrictions;
     - explain that these are natural-language requests and exact pixel dimensions may vary.
 
 Do not use unexplained internal terms such as “dry-run” in the user-facing completion message. If the literal `--dry-run` flag must be discussed during troubleshooting, call it **a setup check that does not create an image**.

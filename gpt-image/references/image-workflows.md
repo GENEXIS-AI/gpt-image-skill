@@ -195,7 +195,7 @@ node <skill-folder>/scripts/gpt_image.mjs batch \
   --concurrency 2
 ```
 
-Concurrency defaults to 2 and is capped at 4. Every job is a separate built-in image generation and consumes included Codex usage. Successful jobs return their own `PATH[id]` and `MARKDOWN[id]`; one failed job does not erase other results, and the CLI does not retry it automatically or switch to an API route.
+Concurrency defaults to 2 and is capped at 4. Every job is a separate built-in image generation and consumes included Codex usage. The top-level `--orchestrator-model` and `--orchestrator-effort` flags apply one CLI policy to every job; the default leaves the changing Codex model catalog unpinned and requests Low reasoning as described in [subscription-runtime.md](subscription-runtime.md#orchestrator-model-selection). Successful jobs return their own `PATH[id]` and `MARKDOWN[id]`; one failed job does not erase other results, and the CLI does not run a model fallback, retry an image-generation failure, or switch to an API route.
 
 Each job requires `prompt` and `out`. It may also use `mode`, `edit_target`, `references`, `reference_roles`, `region`, `preserve`, `avoid`, `exact_text`, `quality`, `size`, `background`, `timeout_seconds`, `overwrite`, or `verbose`. Field names use JSON underscores.
 

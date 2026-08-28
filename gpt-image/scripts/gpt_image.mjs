@@ -35,9 +35,11 @@ const CODEX_INSTALLER_URLS = {
 const ALLOWED_INSTALLER_HOSTS = new Set(["chatgpt.com", "releases.openai.com"]);
 const DEFAULT_TIMEOUT_MS = 12 * 60 * 1000;
 const MAX_CAPTURE_BYTES = 24 * 1024 * 1024;
-const CONTRACT_VERSION = 6;
+const CONTRACT_VERSION = 7;
 const DEFAULT_BATCH_CONCURRENCY = 2;
 const MAX_BATCH_CONCURRENCY = 4;
+const DEFAULT_ORCHESTRATOR_EFFORT = "low";
+const ORCHESTRATOR_MODEL_POLICIES = new Set(["auto", "account-default"]);
 const IMAGE_MODES = new Set(["auto", "generate", "edit", "variation"]);
 const REPEATABLE_FLAGS = new Set([
   "reference",
@@ -137,6 +139,8 @@ Plan and generate options:
   --quality TEXT          Prompt instruction, e.g. draft or final.
   --size TEXT             Prompt instruction, e.g. square or 1536x1024.
   --background TEXT       Explicit output constraint, e.g. transparent or opaque.
+  --orchestrator-model M  auto, account-default, or a current Codex model ID. Default: auto.
+  --orchestrator-effort E Codex reasoning level. Auto policy default: low.
   --timeout-seconds N     Default: ${DEFAULT_TIMEOUT_MS / 1000}
   --overwrite             Replace the exact output path.
   --dry-run               Generate only: check sign-in and paths without creating an image.
@@ -149,6 +153,8 @@ Batch options:
   --check-only            Validate and summarize the batch without sign-in or generation.
   --cwd PATH              Workspace root. Defaults to the current directory.
   --timeout-seconds N     Default timeout for each job.
+  --orchestrator-model M  Apply one model policy to every job. Default: auto.
+  --orchestrator-effort E Apply one reasoning level to every job. Auto policy default: low.
   --overwrite             Allow every job to replace its exact output path.
   --verbose               Show sanitized Codex bridge output from each job.
   --json                  Print machine-readable output.
@@ -158,6 +164,8 @@ Each finalized image prompt is forwarded unchanged; attachment labels are routin
 Planning and the no-image setup check are optional troubleshooting tools, not generation prerequisites.
 Batch performs one ChatGPT-auth check, then runs every job whose inputs already exist. Jobs may share references; output-dependent edits stay sequential.
 Each job prompt must describe one image. Keep ordering in job IDs and output paths, not in phrases such as "the first of five."
+The default CLI bridge does not pin a model name. Codex selects a current model available to the signed-in account, while the runner requests ${DEFAULT_ORCHESTRATOR_EFFORT} reasoning (Light in the app, Low in the CLI).
+The built-in image-generation route is also unpinned so OpenAI can update its renderer. The runner never retries an image-generation, usage-limit, or Free-plan failure.
 
 Runtime:
   Node.js ${MIN_NODE_MAJOR}+ is required; the latest supported LTS is recommended.
@@ -592,6 +600,8 @@ function gettingStartedGuide() {
       revision: "/gpt-image Edit the last image: change only the jacket to red.",
       transparent: "Use the gpt-image skill to create a flat blue robot app icon with a transparent background, 1:1, high quality.",
     },
+    runtime_note: "The CLI bridge pins no model ID; Codex selects a current account-available model and the runner requests Low reasoning.",
+    eligibility_note: "Setup verifies installation and ChatGPT sign-in, not image entitlement. Check current official Codex plan policy; this skill does not bypass plan restrictions.",
     note: "Ratios and quality phrases are natural-language requests, not fixed API presets. Exact pixel dimensions may vary with built-in image generation.",
   };
 }
@@ -615,6 +625,8 @@ function printGettingStartedGuide(guide, asJson) {
   process.stdout.write(`Reference example: ${guide.examples.reference}\n`);
   process.stdout.write(`Revision example: ${guide.examples.revision}\n\n`);
   process.stdout.write(`Transparent-background example: ${guide.examples.transparent}\n\n`);
+  process.stdout.write(`${guide.runtime_note}\n`);
+  process.stdout.write(`${guide.eligibility_note}\n\n`);
   process.stdout.write(`${guide.note}\n`);
 }
 
@@ -715,6 +727,8 @@ function assertKnownImageOptions(args) {
     "quality",
     "size",
     "background",
+    "orchestrator-model",
+    "orchestrator-effort",
     "timeout-seconds",
     "overwrite",
     "dry-run",
@@ -728,6 +742,35 @@ function assertKnownImageOptions(args) {
   if (args._.length > 1) {
     throw new CliError(`Unexpected positional argument(s): ${args._.slice(1).join(" ")}`, 2);
   }
+}
+
+function normalizeOrchestratorOptions(args) {
+  const requested = String(args["orchestrator-model"] || "auto").trim();
+  if (!requested) throw new CliError("--orchestrator-model must not be empty.", 2);
+
+  const effort = String(args["orchestrator-effort"] || DEFAULT_ORCHESTRATOR_EFFORT).toLowerCase();
+  if (!/^[a-z][a-z0-9_-]{0,31}$/.test(effort)) {
+    throw new CliError("--orchestrator-effort must be a simple Codex reasoning-level name.", 2);
+  }
+  const reservedPolicy = requested.toLowerCase();
+  if (reservedPolicy === "account-default" && args["orchestrator-effort"] !== undefined) {
+    throw new CliError(
+      "--orchestrator-effort cannot be combined with --orchestrator-model account-default because that route lets Codex select the available default model and effort for the signed-in account.",
+      2,
+    );
+  }
+
+  const policy = ORCHESTRATOR_MODEL_POLICIES.has(reservedPolicy) ? reservedPolicy : "explicit";
+  if (policy === "explicit" && !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(requested)) {
+    throw new CliError("--orchestrator-model must be auto, account-default, or a valid Codex model ID.", 2);
+  }
+  const primaryModel = policy === "explicit" ? requested : null;
+
+  return {
+    orchestratorEffort: policy === "account-default" ? null : effort,
+    orchestratorModel: primaryModel,
+    orchestratorPolicy: policy,
+  };
 }
 
 async function normalizeGenerateOptions(args) {
@@ -791,6 +834,7 @@ async function normalizeGenerateOptions(args) {
   }
 
   const output = await chooseOutputPath(args.out, workspace, prompt, Boolean(args.overwrite));
+  const orchestrator = normalizeOrchestratorOptions(args);
 
   return {
     avoid: repeatedValues(args, "avoid"),
@@ -798,6 +842,7 @@ async function normalizeGenerateOptions(args) {
     editTarget,
     exactText: repeatedValues(args, "exact-text"),
     mode,
+    ...orchestrator,
     output,
     overwrite: Boolean(args.overwrite),
     preserve: repeatedValues(args, "preserve"),
@@ -877,6 +922,46 @@ function attachmentPaths(options) {
   ];
 }
 
+function orchestratorAttempt(options) {
+  return {
+    effort: options.orchestratorEffort,
+    model: options.orchestratorModel,
+    name: options.orchestratorModel || "codex-selected-current",
+  };
+}
+
+function buildCodexImageArgs(options, finalMessage, attempt) {
+  const codexArgs = [
+    "exec",
+    "--ignore-user-config",
+    "--skip-git-repo-check",
+    "--ephemeral",
+    "--json",
+    "--color",
+    "never",
+    "--sandbox",
+    "workspace-write",
+    "-c",
+    'approval_policy="never"',
+  ];
+  if (attempt.model) codexArgs.push("-m", attempt.model);
+  if (attempt.effort) {
+    codexArgs.push("-c", `model_reasoning_effort=${JSON.stringify(attempt.effort)}`);
+  }
+  codexArgs.push("-C", options.workspace, "-o", finalMessage);
+  for (const input of attachmentPaths(options)) codexArgs.push("-i", input);
+  codexArgs.push("-");
+  return codexArgs;
+}
+
+function explicitFreePlanImageRejection(result) {
+  const text = sanitizeText(`${result.stderr}\n${result.stdout}`).toLowerCase();
+  return (
+    /image generation[^\n]{0,180}(?:not available|unavailable)[^\n]{0,100}free plan/i.test(text) ||
+    /free plan[^\n]{0,180}image generation[^\n]{0,180}(?:not available|unavailable)/i.test(text)
+  );
+}
+
 async function generateWithSubscription(options, auth) {
   if (!auth.codex.available) {
     throw new CliError(
@@ -897,28 +982,9 @@ async function generateWithSubscription(options, auth) {
   const finalMessage = path.join(temporary, "final-message.txt");
   const prompt = buildBridgePrompt(options);
 
-  const codexArgs = [
-    "exec",
-    "--ignore-user-config",
-    "--skip-git-repo-check",
-    "--ephemeral",
-    "--json",
-    "--color",
-    "never",
-    "--sandbox",
-    "workspace-write",
-    "-c",
-    'approval_policy="never"',
-    "-C",
-    options.workspace,
-    "-o",
-    finalMessage,
-  ];
-  for (const input of attachmentPaths(options)) codexArgs.push("-i", input);
-  codexArgs.push("-");
-
   try {
-    const result = await runCodexProcess(codexArgs, {
+    const attempt = orchestratorAttempt(options);
+    const result = await runCodexProcess(buildCodexImageArgs(options, finalMessage, attempt), {
       cwd: options.workspace,
       input: prompt,
       timeoutMs: options.timeoutMs,
@@ -930,6 +996,12 @@ async function generateWithSubscription(options, auth) {
       );
     }
     if (result.code !== 0) {
+      if (explicitFreePlanImageRejection(result)) {
+        throw new CliError(
+          "Codex image generation is not available on the ChatGPT Free plan. A lower reasoning level changes only bridge orchestration, not image-generation entitlement. This skill will not switch to a separately billed API route.",
+          3,
+        );
+      }
       throw new CliError(
         `Codex subscription image generation failed with exit code ${result.code}.\n${tail(`${result.stderr}\n${result.stdout}`)}`,
       );
@@ -940,18 +1012,24 @@ async function generateWithSubscription(options, auth) {
         `Codex completed but did not write the requested image: ${options.output}\n${tail(finalText || result.stdout)}`,
       );
     }
+    return {
+      orchestrator_model_used: attempt.name,
+      orchestrator_reasoning_effort_used: attempt.effort || "account-default",
+      renderer_route_used: "Codex built-in image_gen",
+    };
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
 }
 
 async function executeGeneration(options, auth) {
-  await generateWithSubscription(options, auth);
+  const runtimeRoute = await generateWithSubscription(options, auth);
   const validation = await validateImage(options.output, {
     requireTransparency: /transparent|alpha/i.test(options.background),
   });
   return {
     ...imageRouteReceipt(options),
+    ...runtimeRoute,
     auth_evidence: auth.evidence,
     bytes: validation.bytes,
     format: validation.format,
@@ -1427,6 +1505,23 @@ function capabilityReport() {
       route: "ChatGPT subscription through Codex built-in image_gen",
       images_api: false,
       api_key: false,
+      plan_entitlement_preflight: false,
+      plan_entitlement_source: "Codex runtime and current official plan policy",
+    },
+    model_routing: {
+      renderer_route: "Codex built-in image_gen",
+      renderer_model_pinned: false,
+      cli_orchestrator_policy: "auto",
+      primary_orchestrator_model: "Codex-selected current model available to the signed-in account",
+      orchestrator_model_pinned: false,
+      primary_reasoning_effort: DEFAULT_ORCHESTRATOR_EFFORT,
+      app_reasoning_label: "Light",
+      cli_reasoning_label: "Low",
+      model_catalog_embedded: false,
+      model_catalog_behavior: "Current Codex availability is resolved at runtime.",
+      visual_quality_boundary: "The orchestrator calls image_gen; the built-in renderer produces the image pixels.",
+      image_generation_retries: false,
+      free_plan_bypass: false,
     },
     hosts: {
       codex: {
@@ -1510,7 +1605,8 @@ function capabilityReport() {
       authentication_checks_per_batch: 1,
       auth_diagnostic: "batch-level only when login status is ambiguous",
       diagnostics_per_job: 0,
-      automatic_retries: false,
+      automatic_image_generation_retries: false,
+      model_selection_preflight: false,
       check_without_generation: "--check-only",
       usage: "Each job consumes included Codex image-generation usage separately.",
     },
@@ -1525,6 +1621,7 @@ function capabilityReport() {
       "OPENAI_API_KEY",
       "API-key Codex login",
       "separately billed fallback",
+      "Free-plan image-generation bypass",
     ],
   };
 }
@@ -1598,6 +1695,12 @@ function imageRouteReceipt(options) {
     requested_quality: options.quality,
     requested_background: options.background,
     transparency_validation_required: /transparent|alpha/i.test(options.background),
+    renderer_route: "Codex built-in image_gen",
+    renderer_model_pinned: false,
+    orchestrator_model_policy: options.orchestratorPolicy,
+    orchestrator_primary_model: options.orchestratorModel || "codex-selected-current",
+    orchestrator_model_pinned: Boolean(options.orchestratorModel),
+    orchestrator_primary_reasoning_effort: options.orchestratorEffort || "account-default",
   };
 }
 
@@ -1613,6 +1716,8 @@ function assertKnownBatchOptions(args) {
     "cwd",
     "concurrency",
     "timeout-seconds",
+    "orchestrator-model",
+    "orchestrator-effort",
     "overwrite",
     "check-only",
     "json",
@@ -1726,6 +1831,8 @@ function batchJobArgs(job, index, batchArgs) {
       size: job.size,
       background: job.background,
       "timeout-seconds": job.timeout_seconds ?? batchArgs["timeout-seconds"],
+      "orchestrator-model": batchArgs["orchestrator-model"],
+      "orchestrator-effort": batchArgs["orchestrator-effort"],
       overwrite: job.overwrite ?? Boolean(batchArgs.overwrite),
       verbose: job.verbose ?? Boolean(batchArgs.verbose),
     },

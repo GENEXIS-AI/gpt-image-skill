@@ -189,3 +189,5 @@ The bridge is ready only when `doctor --json` reports:
 ```
 
 After setup, generate directly. Planning and the no-image setup check (`generate --dry-run`) are optional troubleshooting tools, not first-use gates. In user-facing messages, call the latter “a setup check that does not create an image.” A normal result needs only a workspace-contained usable PNG, its absolute path, and an inline preview. SHA-256 remains relevant to verifying a downloaded installer, not to ordinary generated images.
+
+Setup readiness verifies the local bridge and ChatGPT sign-in; it does not probe plan entitlement by spending an image generation. The CLI bridge leaves the changing model catalog unpinned and requests Low reasoning from a current account-available Codex model; it also invokes the built-in image renderer without pinning an underlying renderer model. Plan eligibility follows the current Codex service and official pricing, and the skill must not offer an API bypass.

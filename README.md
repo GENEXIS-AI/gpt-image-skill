@@ -10,7 +10,7 @@ install skill → Sign in with ChatGPT → direct prompt or delegated concept pr
               → built-in $imagegen → <project>/generated-images/*.png
 ```
 
-> This repository does not call the OpenAI Images API and does not create a separately billed Images API request. Built-in image generation still consumes included ChatGPT/Codex usage and remains subject to plan and workspace limits. OpenAI notes that image generations use included limits 3–5× faster on average than similar non-image turns, depending on quality and size, so parallel batches should stay intentional and small.
+> This repository does not call the OpenAI Images API and does not create a separately billed Images API request. Built-in image generation still consumes included ChatGPT/Codex usage and remains subject to plan and workspace limits. OpenAI currently states that Codex image generation is **not available on the Free plan** and that supported-plan image generations use included limits 3–5× faster on average than similar non-image turns, depending on quality and size. This skill does not bypass that boundary.
 
 ![GPT Image Skill smoke test](./generated-images/subscription-workflow-smoke.png)
 
@@ -60,6 +60,9 @@ Try:
 $gpt-image Create a cozy reading room at sunset, 16:9, high quality.
 /gpt-image Use @references/character.png as the character reference and place it in a rainy city, 9:16, high quality.
 Use the gpt-image skill to create a flat blue robot app icon with a transparent background, 1:1, high quality.
+
+CLI model policy: no model ID is pinned; Codex selects a current account-available model at Low reasoning.
+Plan note: setup verifies sign-in, not image entitlement. Current Codex pricing excludes image generation from Free.
 ```
 
 These are common natural-language requests, not a fixed API size list. Other framing or dimension requests can be written normally, and exact pixel dimensions may vary with built-in image generation. The guide appears once after installation rather than after every image.
@@ -91,20 +94,39 @@ Each bridge invocation is ephemeral. For “change the result you just made,” 
 The default path is:
 
 ```text
-quick ChatGPT-auth check → one generation → minimal PNG sanity check → PATH + inline Markdown
+quick ChatGPT-auth check → current account-available Codex model at Low reasoning
+                         → built-in image generation → minimal PNG sanity check
+                         → PATH + inline Markdown
 ```
 
 Planning, the setup check that does not create an image (`--dry-run`), `capabilities --json`, `inspect --input`, and detailed JSON remain available for troubleshooting. They are not required before a normal image request.
 
-### 5. Parallelism is explicit and bounded
+### 5. The model stays current; reasoning stays light
 
-`generate` remains the one-image happy path. For two or more outputs, the skill automatically batches every job whose inputs already exist. Different design concepts run independently; same-design variants may run together while reading one shared edit target or design reference. Only an output-to-input dependency creates another stage. The batch checks ChatGPT auth once and uses default concurrency 2, maximum 4, with no Doctor, planning, inspection, or automatic retries per job.
+Codex model names and availability change over time. The default CLI bridge therefore does **not** pin Luna, Sol, Terra, or any other model ID and does not embed a model catalog. Codex selects a current model available to the signed-in account, while the runner requests **Low** reasoning—the CLI name for **Light** in the ChatGPT app. The selected Codex model receives a finalized, tightly scoped instruction and calls `$imagegen`.
+
+The image renderer is not pinned either. OpenAI currently documents Codex's built-in renderer as `gpt-image-2`, but this repository invokes the built-in image-generation capability by name so OpenAI can update the underlying renderer without a skill release. The outer Codex model can affect tool routing and instruction following, but it does not replace the built-in renderer or directly set its visual rendering quality.
+
+The default `auto` policy is intentionally small:
+
+1. Let Codex select a current model available to the signed-in account.
+2. Request Low reasoning for the deterministic bridge task.
+3. Run no model-discovery preflight, fallback turn, or automatic image-generation retry.
+
+`--orchestrator-model account-default` removes even the Low override and leaves both model and reasoning to Codex. A current model ID can still be pinned as an advanced, explicit user choice; the runner accepts the ID without maintaining its own allowlist.
+
+This policy lowers bridge overhead on supported plans, but it cannot make image generation available on ChatGPT Free. Codex itself is included in Free, while the official pricing page separately says image generation is unavailable there. See [Codex models](https://learn.chatgpt.com/docs/models), [Codex image generation](https://learn.chatgpt.com/docs/image-generation), and [Codex pricing](https://learn.chatgpt.com/docs/pricing).
+
+### 6. Parallelism is explicit and bounded
+
+`generate` remains the one-image happy path. For two or more outputs, the skill automatically batches every job whose inputs already exist. Different design concepts run independently; same-design variants may run together while reading one shared edit target or design reference. Only an output-to-input dependency creates another stage. The batch checks ChatGPT auth once and uses default concurrency 2, maximum 4, with no Doctor, planning, inspection, model-discovery preflight, fallback turn, or image-generation retry per job.
 
 ## Features
 
 - Uses Codex's built-in `$imagegen` under **Sign in with ChatGPT**
 - Uses a host-native OpenAI/Codex `image_gen` tool directly only when it is backed by included ChatGPT/Codex usage
 - Blocks `OPENAI_API_KEY`, API-key Codex login, and Images API fallback
+- Leaves the default Codex model unpinned and requests Low reasoning for the deterministic CLI bridge
 - Installs the same `gpt-image` skill for Codex, Claude Code, and Google Antigravity
 - Preserves direct prompts verbatim and honors delegated multi-concept design work
 - Supports one or multiple references with deterministic attachment order
@@ -128,6 +150,7 @@ Planning, the setup check that does not create an image (`--dry-run`), `capabili
 | Same design, different styles | Repeat `--mode variation --edit-target SAME_PATH` in a batch |
 | Same identity, different scenes | Repeat `--mode generate --reference SAME_PATH` in a batch |
 | Different designs in parallel | Give each batch job its own prompt and references |
+| CLI model routing | Default `auto` = current account-available Codex model at Low reasoning |
 
 The edit target is Image 1. Supporting references follow in command-line order.
 
@@ -136,7 +159,7 @@ The edit target is Image 1. Supporting references follow in command-line order.
 - Node.js 22 or newer; the [current supported LTS](https://nodejs.org/en/download) is recommended.
 - Git when installing from GitHub.
 - Codex CLI signed in with ChatGPT, unless the calling host provides subscription-native OpenAI/Codex `image_gen`.
-- A ChatGPT/Codex plan and workspace that permit image generation.
+- A ChatGPT/Codex plan and workspace that permit image generation. The current official pricing page excludes image generation from the Free plan.
 
 | Environment | Status | Keep together |
 | --- | --- | --- |
@@ -244,6 +267,25 @@ Direct runner:
 ```bash
 node ./gpt-image/scripts/gpt_image.mjs generate \
   --prompt "A cobalt-blue glass robot on a warm off-white background." \
+  --out "generated-images/glass-robot.png"
+```
+
+The command above uses the default `auto` policy: Codex selects a current model available to the signed-in account, while the runner requests Low reasoning. No model catalog, model discovery, fallback, or extra diagnostic turn is involved. To leave both the model and reasoning effort entirely at Codex defaults:
+
+```bash
+node ./gpt-image/scripts/gpt_image.mjs generate \
+  --prompt "A cobalt-blue glass robot on a warm off-white background." \
+  --orchestrator-model account-default \
+  --out "generated-images/glass-robot.png"
+```
+
+An advanced caller can explicitly pin any current Codex orchestrator and reasoning effort. The runner deliberately has no model-ID allowlist because the catalog changes. This changes the agent that routes `$imagegen`, not the built-in renderer:
+
+```bash
+node ./gpt-image/scripts/gpt_image.mjs generate \
+  --prompt "A cobalt-blue glass robot on a warm off-white background." \
+  --orchestrator-model "<current-codex-model-id>" \
+  --orchestrator-effort medium \
   --out "generated-images/glass-robot.png"
 ```
 
@@ -372,7 +414,7 @@ Several jobs may read the same anchor safely. Attach only the style reference re
 
 If no common design image exists, generate the first requested output and use its returned path as the anchor for the remaining parallel variants. The skill does not generate an extra hidden anchor that consumes additional subscription usage. A batch output cannot feed another job in that same batch; mixed workflows run ready jobs in stages.
 
-Each job returns its own `PATH[id]` and `MARKDOWN[id]`. The runner does not retry failed jobs automatically and never switches to the Images API when a subscription limit is reached. See [Image and reference workflows](./gpt-image/references/image-workflows.md#multi-image-workflows) for independent-concept and mixed-dependency examples.
+Each job returns its own `PATH[id]` and `MARKDOWN[id]`. The runner does not retry a failed image generation, run a model fallback, or switch to the Images API when a subscription limit is reached. See [Image and reference workflows](./gpt-image/references/image-workflows.md#multi-image-workflows) for independent-concept and mixed-dependency examples.
 
 ### Optional troubleshooting
 
@@ -403,6 +445,7 @@ node ./gpt-image/scripts/gpt_image.mjs verify-installers --json
 - Removes `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`, and `CODEX_ACCESS_TOKEN` from Codex child processes.
 - Blocks generation unless redacted diagnostics establish ChatGPT authentication.
 - Calls `codex login status` once on the normal generation path; Codex Doctor is used only for explicit or ambiguous diagnosis.
+- Leaves the Codex model and built-in renderer unpinned; default `auto` requests only CLI Low reasoning from the current account-available model.
 - Checks authentication once for a live batch, not once per job; no diagnostic command runs per job.
 - Contains no OpenAI Images API endpoint or `/v1/images` request.
 - Never reads auth files and never writes the generated image outside the active workspace.
@@ -418,6 +461,7 @@ node ./gpt-image/scripts/gpt_image.mjs verify-installers --json
 - [x] Transparent-background routing plus PNG alpha/transparency validation on the bridge path
 - [x] Last-output-as-edit-target contract for follow-up revisions
 - [x] Direct generation by default; planning, no-image setup checks, and detailed receipts are optional
+- [x] Unpinned, runtime-selected Codex model with Low bridge reasoning, no embedded model catalog, and no Free-plan bypass
 - [x] Shared-anchor variations and independent concepts use bounded parallel batches; one auth check and zero diagnostic gates per job
 - [x] One-time, user-language getting-started guide with ratio and quality examples
 - [x] Minimal output validation without generated-image hashes
