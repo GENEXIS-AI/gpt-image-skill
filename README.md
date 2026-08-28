@@ -264,7 +264,7 @@ node ./gpt-image/scripts/gpt_image.mjs generate \
   --out "generated-images/robot-icon-transparent.png"
 ```
 
-Transparent output must be a PNG with an alpha channel or PNG transparency chunk. The runner rejects an opaque PNG when `--background transparent` was requested. A checkerboard pattern, white canvas, or solid-color background is not treated as transparency. If a subscription-native host tool has no real background control, the skill uses the bridge when available instead of claiming transparency it cannot verify.
+Transparent output must be a PNG with an alpha channel or PNG transparency chunk. When `--background transparent` is requested, the runner rejects a PNG that has neither; this verifies transparency support without pretending to be a visual-quality review. A checkerboard pattern, white canvas, or solid-color background is not a valid substitute for transparency. If a subscription-native host tool has no real background control, the skill uses the bridge when available instead of claiming transparency it cannot verify.
 
 ### Reference-guided generation
 
